@@ -91,10 +91,21 @@ class Metrics:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _safe_str(value) -> str:
+    """Convierte un valor de celda a string, tratando NaN/None/pd.NA como ''.
+
+    row.get(...) or "" rompe con TypeError cuando el valor es pd.NA, porque
+    NAType.__bool__ no está definido para usarse en un `or`.
+    """
+    if pd.isna(value):
+        return ""
+    return str(value)
+
+
 def is_marketing(row) -> bool:
     """Devuelve True si el lead pertenece al equipo de Marketing (pautas/redes)."""
-    canal_off = str(row.get("Canal offline", "") or "").strip().lower()
-    canal_on = str(row.get("canal online", "") or "").strip().lower()
+    canal_off = _safe_str(row.get("Canal offline", "")).strip().lower()
+    canal_on = _safe_str(row.get("canal online", "")).strip().lower()
     # Canal offline vacío → Referido
     if not canal_off or canal_off in {"nan", "none"}:
         return False
@@ -121,10 +132,10 @@ def is_marketing(row) -> bool:
 
 def _is_paid_network(row) -> bool:
     """Determina si un lead viene de pauta paga (Facebook/Instagram ads)."""
-    canal = str(row.get("canal online", "") or "").strip().lower()
+    canal = _safe_str(row.get("canal online", "")).strip().lower()
     if canal in PAID_NETWORK_CHANNELS:
         return True
-    origen = str(row.get("Origen de la pauta", "") or "").strip().lower()
+    origen = _safe_str(row.get("Origen de la pauta", "")).strip().lower()
     if not origen or origen in {"nan", "no aplica", "sin definir", ""}:
         return False
     # El campo puede venir como "Facebook" o como "['Facebook']"
