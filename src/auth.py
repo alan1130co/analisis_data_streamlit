@@ -1,0 +1,44 @@
+import streamlit as st
+import hmac
+
+
+def check_password() -> bool:
+    """Retorna True si el usuario ingresó la contraseña correcta.
+
+    La contraseña se lee de st.secrets['app_password']:
+    - En LOCAL: se lee de .streamlit/secrets.toml
+    - En STREAMLIT CLOUD: se lee de la config de Secrets del dashboard
+    """
+
+    def password_entered():
+        expected = st.secrets.get("app_password", "")
+        if not expected:
+            st.session_state["password_correct"] = False
+            st.session_state["auth_error"] = "no_config"
+            return
+        if hmac.compare_digest(st.session_state["password_input"], expected):
+            st.session_state["password_correct"] = True
+            del st.session_state["password_input"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.markdown("# 🔒 Dashboard - Soluciones Migratorias")
+    st.markdown("Ingresá la contraseña para acceder al análisis de datos:")
+
+    st.text_input(
+        "Contraseña",
+        type="password",
+        on_change=password_entered,
+        key="password_input",
+    )
+
+    if st.session_state.get("auth_error") == "no_config":
+        st.error("⚠️ La contraseña no está configurada. Contactá al administrador.")
+    elif "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ Contraseña incorrecta")
+
+    st.caption("Dashboard de uso interno de Soluciones Migratorias.")
+    return False

@@ -1,0 +1,8 @@
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+html, body, [class*="css"] {
+    font-feature-settings: "tnum" on, "lnum" on;
+}

@@ -1,0 +1,43 @@
+.section-divider {
+    border-top: 1px solid var(--color-border);
+    margin: 32px 0 24px 0;
+}
+
+.section-title {
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 12px;
+    margin-top: 8px;
+}
+
+/* Plotly charts: quitar fondo */
+.js-plotly-plot, .plot-container {
+    background: transparent !important;
+}
+
+[data-testid="stDataFrame"] {
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .section-title { margin-top: 16px; }
+    .js-plotly-plot { min-height: 280px; }
+}
+
+/* Asegurar que los Plotly de breakdowns nunca se corten */
+.section-block {
+    margin-bottom: 32px;
+    padding: 8px 0;
+}
+
+.js-plotly-plot {
+    min-height: 320px;
+    overflow: visible !important;
+}
+
+/* En móvil, dar más altura para que entren las labels */
+@media (max-width: 768px) {
+    .js-plotly-plot { min-height: 380px; }
+    .section-block { margin-bottom: 24px; }
+}

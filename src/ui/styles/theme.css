@@ -1,0 +1,47 @@
+:root {
+    /* Backgrounds */
+    --color-bg: #FFFFFF;
+    --color-card: #FFFFFF;
+    --color-surface: #F9FAFB;
+
+    /* Borders */
+    --color-border: #E5E7EB;
+
+    /* Text */
+    --color-text: #111827;
+    --color-text-muted: #6B7280;
+
+    /* Brand */
+    --color-primary: #2563EB;
+    --color-success: #16A34A;
+    --color-danger: #DC2626;
+    --color-warning: #EA580C;
+    --color-info: #0EA5E9;
+    --color-purple: #7C3AED;
+    --color-cyan: #0891B2;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.08);
+
+    /* Radii */
+    --radius-card: 14px;
+    --radius-sm: 8px;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+}
+
+/* Hook para dark mode futuro - dejado preparado, no activo */
+/*
+[data-theme="dark"] {
+    --color-bg: #0F172A;
+    --color-card: #1E293B;
+    --color-text: #F1F5F9;
+    --color-text-muted: #94A3B8;
+    --color-border: #334155;
+}
+*/

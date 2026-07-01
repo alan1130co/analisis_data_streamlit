@@ -1,0 +1,41 @@
+# Datos sensibles - NUNCA subir
+.env
+.env.local
+.env.*.local
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+*.xls
+*.xlsx
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Claude Code - config local personal
+.claude/settings.local.json
+
+# Streamlit
+.streamlit/secrets.toml
+!.streamlit/config.toml
