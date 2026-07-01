@@ -2,11 +2,14 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 # Cargar .env desde la raíz del proyecto
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(ROOT_DIR / ".env")
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT_DIR / ".env")
+except Exception:
+    # En Streamlit Cloud no hay .env, se usan st.secrets
+    pass
 
 # --- App ---
 APP_TITLE: str = os.getenv("APP_TITLE", "Clientify Analyzer")

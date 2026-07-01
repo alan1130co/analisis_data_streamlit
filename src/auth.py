@@ -3,22 +3,23 @@ import hmac
 
 
 def check_password() -> bool:
-    """Retorna True si el usuario ingresó la contraseña correcta.
-
-    La contraseña se lee de st.secrets['app_password']:
-    - En LOCAL: se lee de .streamlit/secrets.toml
-    - En STREAMLIT CLOUD: se lee de la config de Secrets del dashboard
-    """
+    """Retorna True si el usuario ingresó la contraseña correcta."""
 
     def password_entered():
-        expected = st.secrets.get("app_password", "")
+        try:
+            expected = st.secrets["app_password"]
+        except (KeyError, FileNotFoundError, Exception):
+            st.session_state["password_correct"] = False
+            st.session_state["auth_error"] = "no_config"
+            return
         if not expected:
             st.session_state["password_correct"] = False
             st.session_state["auth_error"] = "no_config"
             return
-        if hmac.compare_digest(st.session_state["password_input"], expected):
+        if hmac.compare_digest(st.session_state.get("password_input", ""), expected):
             st.session_state["password_correct"] = True
-            del st.session_state["password_input"]
+            if "password_input" in st.session_state:
+                del st.session_state["password_input"]
         else:
             st.session_state["password_correct"] = False
 
