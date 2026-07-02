@@ -34,14 +34,15 @@ KPI_DEFINITIONS_REFERIDOS: list[KPIDefinition] = [
 ]
 
 KPI_DEFINITIONS_TODOS: list[KPIDefinition] = [
-    KPIDefinition("creados",             "Creados del mes",        "📅", "#0F172A", "int"),
-    KPIDefinition("calificados",         "Calificados",            "✅", "#2563EB", "int"),
-    KPIDefinition("no_calificados",      "No calificados",         "❌", "#DC2626", "int"),
-    KPIDefinition("cierres_marketing",   "Cierres pauta (M)",      "🎯", "#16A34A", "int"),
-    KPIDefinition("cierres_referidos",   "Cierres referidos (R)",  "🤝", "#D97706", "int"),
-    KPIDefinition("total_cierres",       "Total cierres (M+R)",    "🏆", "#0EA5E9", "int"),
-    KPIDefinition("cierres_adicionales", "Cierres adicionales",    "🔁", "#0891B2", "int"),
-    KPIDefinition("eficiencia_total",    "% Eficiencia global",    "📊", "#EA580C", "percent"),
+    KPIDefinition("creados",           "Creados del mes",   "📅", "#0F172A", "int"),
+    KPIDefinition("leads_pauta",       "Leads Pauta",        "🎯", "#16A34A", "int"),
+    KPIDefinition("leads_organico",    "Leads Orgánicos",    "🌱", "#059669", "int"),
+    KPIDefinition("leads_tiktok",      "Leads TikTok",       "🎵", "#9333EA", "int"),
+    KPIDefinition("calificados",       "Calificados",        "✅", "#2563EB", "int"),
+    KPIDefinition("no_calificados",    "No calificados",     "❌", "#DC2626", "int"),
+    KPIDefinition("total_cierres",     "Total Cierres",      "🏆", "#0EA5E9", "int"),
+    KPIDefinition("eficiencia_pauta",  "% Eficiencia Pauta", "📈", "#7C3AED", "percent"),
+    KPIDefinition("eficiencia_bruta",  "% Eficiencia Bruta", "📊", "#EA580C", "percent"),
 ]
 
 

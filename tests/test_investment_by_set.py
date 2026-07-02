@@ -36,10 +36,12 @@ def test_investment_by_set_atribuye_cierres_proporcional():
     ])
     df_clientify = pd.DataFrame([
         {"Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
+         "estado": "activo",
          "Fecha de cierre": pd.Timestamp("2026-06-05"),
          "Fecha de segundo cierre": pd.NaT,
          "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
         {"Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
+         "estado": "activo",
          "Fecha de cierre": pd.Timestamp("2026-06-10"),
          "Fecha de segundo cierre": pd.NaT,
          "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},

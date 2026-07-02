@@ -14,7 +14,6 @@ from src.ui.styles import inject_custom_css
 from src.analytics.metrics import compute_all_metrics, is_marketing
 from src.analytics.filters import filter_by_month, available_months, previous_month
 
-from src.ui.sections.efficiency_by_advisor import render_efficiency_by_advisor
 from src.ui.sections.pauta_vs_referidos import render_pauta_vs_referidos
 from src.ui.sections.cierres_por_canal import render_cierres_por_canal
 from src.ui.sections.funnel import render_funnel
@@ -157,8 +156,6 @@ def main():
     st.header("Análisis detallado")
 
     # Secciones que respetan filtro de equipo
-    render_efficiency_by_advisor(df_current, df_full, team=equipo)
-    st.markdown("---")
     render_pauta_vs_referidos(df_current, df, team=equipo)
     st.markdown("---")
     render_cierres_por_canal(df_current, df_full, team=equipo)

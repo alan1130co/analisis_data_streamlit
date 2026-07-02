@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _is_active_estado
 
 _CLOSURE_COLS = [
     "Fecha de cierre", "Fecha de segundo cierre",
@@ -47,13 +47,14 @@ def closures_by_age(
     )
 
     fecha_ref = pd.Timestamp(year, month, 1) + pd.offsets.MonthEnd(0)
+    active = df_full.apply(_is_active_estado, axis=1)
 
     rows = []
     for col in _CLOSURE_COLS:
         if col not in df_full.columns:
             continue
         s = pd.to_datetime(df_full[col], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+        mask = (s.dt.year == year) & (s.dt.month == month) & active
         sub_idx = df_full.index[mask]
         if len(sub_idx) == 0:
             continue

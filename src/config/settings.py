@@ -33,6 +33,7 @@ QUALIFIED_MOTIVES = {
     "manifestó no tener dinero",
     "no tenia dinero",
     "prefiere oficina local en su estado",
+    "cliente de seguimiento",
 }
 
 UNQUALIFIED_MOTIVES = {
@@ -46,9 +47,14 @@ UNQUALIFIED_MOTIVES = {
     "otra",
     "otra (notificar para agregar en las opciones)",
     "por definir",
+    "consulta gratis",
 }
 
 # --- Clasificación de equipo según "Canal offline" y "canal online" ---
+# Nota: NO incluir "tiktok" ni "orgánico" acá — son categorías propias
+# (ver TIKTOK_OFFLINE_CHANNELS / ORGANICO_OFFLINE_CHANNELS más abajo).
+# Tampoco "Referido cliente activo - Redes": pese al nombre "Redes", es un
+# Referido (empieza con REFERIDO_PREFIX) y debe caer en esa bolsa.
 MARKETING_OFFLINE_CHANNELS = {
     "clientify - facebook",
     "clientify - instagram",
@@ -56,7 +62,6 @@ MARKETING_OFFLINE_CHANNELS = {
     "formulario de facebook - cliente potencial",
     "formulario web",
     "llamada entrante",
-    "tiktok",
 }
 
 # Cualquier "Canal offline" que empiece con esto es Referidos, NO Marketing
@@ -68,6 +73,23 @@ REFERRAL_ONLINE_CHANNELS = {"inbox-referral"}  # Referidos
 
 # Para identificar pauta paga específicamente (subset de Marketing)
 PAID_NETWORK_SOURCES = {"facebook", "instagram"}
+
+# --- Orgánico y TikTok (categorías propias, separadas de Pauta) ---
+ORGANICO_OFFLINE_CHANNELS = {"organico", "orgánico", "facebook", "messenger", "instagram"}
+ORGANICO_PAUTA_ORIGINS = {"organico", "orgánico"}
+
+TIKTOK_OFFLINE_CHANNELS = {"tik tok", "tiktok"}
+TIKTOK_PAUTA_ORIGINS = {"tik tok", "tiktok"}
+
+# --- Validación de cierres: solo cuenta si "estado" está en este set ---
+CIERRE_VALID_ESTADOS = {"activo", "activo - mora"}
+
+# --- Asesores Comerciales: todo "propietario" cuenta como Asignado,
+# excepto estas cuentas que no son comerciales (cartera/cobranza, admin) ---
+NON_COMMERCIAL_OWNERS = {"cartera sm", "alan david coneo rodriguez"}
+
+# --- César Augusto: único con este nombre en el sistema ---
+CESAR_AUGUSTO_PREFIX = "cesar augusto"
 
 # Fecha de inicio de operaciones de la empresa (año, mes)
 FOUNDING_DATE = (2024, 5)

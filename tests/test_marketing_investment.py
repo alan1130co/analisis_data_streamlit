@@ -23,6 +23,7 @@ def test_compute_investment_metrics_calcula_costos():
             "propietario": "Ana",
             "Canal offline": "Clientify - Whatsapp",
             "canal online": "paid social",
+            "estado": "activo",
             "Motivo de no cierre": "",
             "Cantidad de cierres": 1,
             "Fecha de cierre": pd.Timestamp("2026-04-05"),

@@ -23,6 +23,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "canal online": "paid social",
             "Canal offline": "clientify - facebook",
             "Origen de la pauta": "facebook",
@@ -37,6 +38,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 10),
             "propietario": "ana",
+            "estado": "en transito",
             "canal online": "paid social",
             "Canal offline": "clientify - instagram",
             "Origen de la pauta": "instagram",
@@ -51,6 +53,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 5),
             "propietario": "carlos",
+            "estado": "activo",
             "canal online": "inbox-referral",
             "Canal offline": "referido - amigo",
             "Origen de la pauta": None,
@@ -66,6 +69,7 @@ def leads():
         {
             "creado": datetime(2024, 1, 15),
             "propietario": "sofia",
+            "estado": "activo",
             "canal online": "paid social",
             "Canal offline": "clientify - whatsapp",
             "Origen de la pauta": "facebook",
@@ -80,6 +84,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 20),
             "propietario": None,
+            "estado": "en transito",
             "canal online": "paid social",
             "Canal offline": "clientify - facebook",
             "Origen de la pauta": "facebook",
@@ -220,13 +225,13 @@ def test_pauta_vs_referidos_suma_100_porciento(df_period, df_full):
     total_pct = result["Porcentaje"].sum()
     assert total_pct == pytest.approx(100.0)
 
-    # Cierres en abril (solo Fecha de cierre, 1ra columna):
+    # Cierres válidos en abril, sumando las 4 columnas de fecha de cierre:
     #   Lead 0 (mkt, sofia): Fecha de cierre April 5 → Pauta
     #   Lead 2 (ref, carlos): Fecha de cierre April 15 → Referidos
-    #   Lead 3 (old 2024): Fecha de cierre January 2024, NO contado en abril
+    #   Lead 3 (old 2024, mkt): Fecha de segundo cierre April 20 → Pauta
     pauta = result[result["Origen"] == "Pauta"].iloc[0]
     ref = result[result["Origen"] == "Referidos"].iloc[0]
-    assert pauta["Cantidad"] == 1
+    assert pauta["Cantidad"] == 2
     assert ref["Cantidad"] == 1
 
 
@@ -240,20 +245,17 @@ def test_cierres_por_canal_team_marketing_excluye_referidos(df_period, df_full):
     assert "Referido - Amigo" not in result["Canal"].values
 
 
-def test_cierres_por_canal_solo_cuenta_primera_fecha_cierre(df_period, df_full):
+def test_cierres_por_canal_suma_las_4_columnas(df_period, df_full):
     """
     Lead 3 fue creado en enero 2024 con Canal offline 'clientify - whatsapp'.
-    Su 2do cierre es en abril 2026, pero su Fecha de cierre (1ra) es enero 2024.
-    Solo se cuenta la 1ra columna → Lead 3 NO aparece en el canal de abril.
+    Su Fecha de cierre (1ra) es enero 2024, pero su 2do cierre cae en abril 2026
+    y ahora SÍ se cuenta (se suman las 4 columnas de fecha de cierre).
     """
     result = cierres_por_canal(df_period, df_full, team="Marketing (pautas)")
-    # Lead 3's 2nd closure is NOT counted — solo lead 0 (Clientify - Facebook) cuenta
     assert "Clientify - Facebook" in result["Canal"].values
-    if "Clientify - Whatsapp" in result["Canal"].values:
-        # Whatsapp puede aparecer solo si hay otro lead con 1ra cierre en abril
-        # en el fixture no hay ninguno, así que no debe aparecer
-        cantidad = result.loc[result["Canal"] == "Clientify - Whatsapp", "Cantidad"].iloc[0]
-        assert cantidad == 0
+    assert "Clientify - Whatsapp" in result["Canal"].values
+    cantidad = result.loc[result["Canal"] == "Clientify - Whatsapp", "Cantidad"].iloc[0]
+    assert cantidad == 1
 
 
 def test_cierres_por_canal_team_referidos_solo_referidos(df_period, df_full):
@@ -270,10 +272,11 @@ def test_cierres_por_canal_team_todos_incluye_todo(df_period, df_full):
     assert result_all["Cantidad"].sum() >= result_mkt["Cantidad"].sum()
 
 
-def test_cierres_por_canal_team_todos_suma_total_kpi(df_period, df_full):
-    """team='Todos' debe sumar exactamente el mismo total que compute_all_metrics.total_cierres."""
+def test_cierres_por_canal_team_todos_suma_total_general(df_period, df_full):
+    """team='Todos' debe sumar exactamente el mismo total que total_cierres_general
+    (todas las fuentes), ya que total_cierres del KPI excluye Referidos/TikTok."""
     from src.analytics.metrics import compute_all_metrics
-    expected = compute_all_metrics(df_period, df_full).total_cierres
+    expected = compute_all_metrics(df_period, df_full).total_cierres_general
     canal_total = int(cierres_por_canal(df_period, df_full, team="Todos")["Cantidad"].sum())
     assert canal_total == expected, f"cierres_por_canal={canal_total}, KPI={expected}"
 
@@ -285,6 +288,7 @@ def test_cierres_sin_canal_se_agrupan_como_referido():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "canal online": "inbox",
             "Canal offline": None,          # sin canal → referido
             "Origen de la pauta": None,

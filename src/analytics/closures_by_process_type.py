@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _safe_str, _is_active_estado
 
 CATEGORY_COLUMN = "Tipo de proceso"
 CATEGORY_LABEL = "Tipo de proceso"
@@ -20,12 +20,13 @@ def closures_by_process_type(
     if df_full.empty or CATEGORY_COLUMN not in df_full.columns:
         return pd.DataFrame(columns=[CATEGORY_LABEL, "Total", "Porcentaje"])
 
+    active = df_full.apply(_is_active_estado, axis=1)
     rows = []
     for col in _CLOSURE_COLS:
         if col not in df_full.columns:
             continue
         s = pd.to_datetime(df_full[col], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+        mask = (s.dt.year == year) & (s.dt.month == month) & active
         sub = df_full[mask]
         if sub.empty:
             continue
@@ -35,7 +36,7 @@ def closures_by_process_type(
                 continue
             if team == "Referidos" and es_mkt:
                 continue
-            cat = str(row.get(CATEGORY_COLUMN, "") or "").strip()
+            cat = _safe_str(row.get(CATEGORY_COLUMN, "")).strip()
             if not cat or cat.lower() in {"nan", "none"}:
                 cat = "No registrado"
             rows.append({CATEGORY_LABEL: cat})

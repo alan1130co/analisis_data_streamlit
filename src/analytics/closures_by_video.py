@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _is_active_estado
 
 
 def closures_by_video(
@@ -24,12 +24,13 @@ def closures_by_video(
     # Cierres pauta del mes desde Clientify
     cierres_pauta_total = 0
     if df_clientify is not None and not df_clientify.empty:
+        active = df_clientify.apply(_is_active_estado, axis=1)
         for col in ["Fecha de cierre", "Fecha de segundo cierre",
                     "Fecha de tercer cierre", "Fecha de 4to cierre"]:
             if col not in df_clientify.columns:
                 continue
             s2 = pd.to_datetime(df_clientify[col], errors="coerce")
-            m2 = (s2.dt.year == year) & (s2.dt.month == month)
+            m2 = (s2.dt.year == year) & (s2.dt.month == month) & active
             sub = df_clientify[m2]
             if sub.empty:
                 continue

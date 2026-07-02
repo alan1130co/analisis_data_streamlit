@@ -13,6 +13,7 @@ def df():
         {
             "creado": datetime(2026, 3, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 3, 5),
@@ -26,6 +27,7 @@ def df():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "ana",
+            "estado": "en transito",
             "Motivo de no cierre": "no se logró contactar",
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,
@@ -39,6 +41,7 @@ def df():
         {
             "creado": datetime(2026, 4, 5),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 4, 10),
@@ -112,6 +115,7 @@ def test_monthly_comparison_separa_pauta_y_referidos():
         {
             "creado": datetime(2026, 3, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": None,
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 4, 10),
@@ -126,6 +130,7 @@ def test_monthly_comparison_separa_pauta_y_referidos():
         {
             "creado": datetime(2026, 3, 2),
             "propietario": "ana",
+            "estado": "activo",
             "Motivo de no cierre": None,
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 4, 15),
@@ -140,6 +145,7 @@ def test_monthly_comparison_separa_pauta_y_referidos():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "carlos",
+            "estado": "en transito",
             "Motivo de no cierre": None,
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,

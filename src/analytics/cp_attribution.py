@@ -1,6 +1,6 @@
 import pandas as pd
 from src.data_sources.meta_cp_loader import normalize_phone, normalize_email
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _is_active_estado
 
 
 def _get_clientify_closed_leads(
@@ -15,7 +15,8 @@ def _get_clientify_closed_leads(
         return pd.DataFrame()
 
     s = pd.to_datetime(df_clientify["Fecha de cierre"], errors="coerce")
-    mask = (s.dt.year == year) & (s.dt.month == month)
+    active = df_clientify.apply(_is_active_estado, axis=1)
+    mask = (s.dt.year == year) & (s.dt.month == month) & active
     closed = df_clientify[mask].copy()
     if closed.empty:
         return pd.DataFrame()

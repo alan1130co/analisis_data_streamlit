@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.analytics.closures_by_sector import (
@@ -10,6 +10,13 @@ from src.analytics.closures_by_sector import (
     available_periods,
     closures_by_sector,
 )
+
+_TRANSPARENT = "rgba(0,0,0,0)"
+_COLORS_15 = [
+    "#2563EB", "#16A34A", "#7C3AED", "#EA580C", "#0891B2",
+    "#DC2626", "#D97706", "#059669", "#9333EA", "#E11D48",
+    "#0EA5E9", "#65A30D", "#DB2777", "#4F46E5", "#EAB308",
+]
 
 _MONTHS_ES = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
@@ -55,24 +62,32 @@ def render_closures_by_sector(
         return
 
     total = int(dist["Total"].sum())
+    top = dist.head(15)
+    colors = [_COLORS_15[i % len(_COLORS_15)] for i in range(len(top))]
 
-    fig = px.bar(
-        dist.head(15),
-        x=CATEGORY_LABEL,
-        y="Total",
-        text="Total",
-        color="Total",
-        color_continuous_scale="Oranges",
+    fig = go.Figure(go.Pie(
+        labels=top[CATEGORY_LABEL],
+        values=top["Total"],
+        hole=0.5,
+        marker_colors=colors,
+        texttemplate="%{value} (%{percent})",
+        hovertemplate="%{label}: %{value} cierres (%{percent})<extra></extra>",
+    ))
+    fig.add_annotation(
+        text=f"<b>{total}</b><br>Cierres",
+        x=0.5, y=0.5,
+        font_size=15,
+        showarrow=False,
+        xanchor="center",
+        yanchor="middle",
     )
-    fig.update_traces(textposition="outside")
     fig.update_layout(
-        height=420,
-        margin=dict(l=20, r=20, t=20, b=80),
-        showlegend=False,
-        xaxis_title="",
-        yaxis_title="Cierres",
-        xaxis=dict(tickangle=-30),
-        coloraxis_showscale=False,
+        height=460,
+        margin=dict(l=20, r=180, t=20, b=20),
+        showlegend=True,
+        legend=dict(orientation="v", x=1.02, y=0.5, xanchor="left", yanchor="middle"),
+        plot_bgcolor=_TRANSPARENT,
+        paper_bgcolor=_TRANSPARENT,
     )
     st.plotly_chart(fig, use_container_width=True)
     st.caption(f"Mostrando {total} cierres en {selected_label} para {team}.")

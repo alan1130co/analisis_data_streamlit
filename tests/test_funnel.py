@@ -13,6 +13,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 4, 5),
@@ -25,6 +26,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 2),
             "propietario": "ana",
+            "estado": "en transito",
             "Motivo de no cierre": "no se logró contactar",
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,
@@ -37,6 +39,7 @@ def leads():
         {
             "creado": datetime(2026, 4, 3),
             "propietario": "sofia",
+            "estado": "en transito",
             "Motivo de no cierre": None,
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,
@@ -104,6 +107,7 @@ def test_funnel_lead_sin_propietario_aparece_como_sin_asesor():
     df = pd.DataFrame([{
         "creado": datetime(2026, 4, 1),
         "propietario": None,
+        "estado": "activo",
         "Motivo de no cierre": None,
         "Cantidad de cierres": 1.0,
         "Fecha de cierre": datetime(2026, 4, 10),
@@ -123,6 +127,7 @@ def test_funnel_excluye_asesores_sin_cierres():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "carlos",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 4, 10),
@@ -133,6 +138,7 @@ def test_funnel_excluye_asesores_sin_cierres():
         {
             "creado": datetime(2026, 4, 2),
             "propietario": "laura",
+            "estado": "en transito",
             "Motivo de no cierre": "no se logró contactar",
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,

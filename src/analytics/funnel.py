@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import is_qualified_mask
+from src.analytics.metrics import is_qualified_mask, _is_active_estado
 
 _CLOSE_COLS = [
     "Fecha de cierre",
@@ -22,12 +22,19 @@ def _infer_period(df_period: pd.DataFrame) -> tuple[int, int]:
     return int(first.year), int(first.month)
 
 
-def _closures_in_month_mask(df: pd.DataFrame, year: int, month: int) -> pd.Series:
-    # Solo "Fecha de cierre" (1ra columna), consistente con total_cierres
-    if "Fecha de cierre" in df.columns:
-        dt = pd.to_datetime(df["Fecha de cierre"], errors="coerce")
-        return (dt.dt.year == year) & (dt.dt.month == month)
-    return pd.Series(False, index=df.index)
+def _count_closures_in_month(df: pd.DataFrame, year: int, month: int) -> int:
+    """Cuenta cierres válidos (Activo) del mes, sumando las 4 columnas de fecha de cierre."""
+    if df.empty:
+        return 0
+    active = df.apply(_is_active_estado, axis=1)
+    total = 0
+    for col in _CLOSE_COLS:
+        if col not in df.columns:
+            continue
+        dt = pd.to_datetime(df[col], errors="coerce")
+        mask = (dt.dt.year == year) & (dt.dt.month == month) & active
+        total += int(mask.sum())
+    return total
 
 
 def funnel_by_advisor(
@@ -61,8 +68,7 @@ def funnel_by_advisor(
         else:
             df_adv_full = pd.DataFrame()
 
-        todos_mask = _closures_in_month_mask(df_adv_full, year, month) if not df_adv_full.empty else pd.Series([], dtype=bool)
-        todos = int(todos_mask.sum())
+        todos = _count_closures_in_month(df_adv_full, year, month)
 
         pct_efic = round(todos / asignados * 100, 1) if asignados else 0.0
 
@@ -78,8 +84,7 @@ def funnel_by_advisor(
     if "propietario" in df_full.columns:
         df_no_owner_full = df_full[df_full["propietario"].isna()]
         if not df_no_owner_full.empty:
-            todos_no_owner_mask = _closures_in_month_mask(df_no_owner_full, year, month)
-            todos_no_owner = int(todos_no_owner_mask.sum())
+            todos_no_owner = _count_closures_in_month(df_no_owner_full, year, month)
             if todos_no_owner >= 1:
                 df_no_owner_period = df_period[df_period["propietario"].isna()]
                 calificados_no_owner = int(is_qualified_mask(df_no_owner_period).sum()) if not df_no_owner_period.empty else 0

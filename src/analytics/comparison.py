@@ -35,10 +35,10 @@ def monthly_comparison(
     m_prev = compute_all_metrics(df_prev, df)
 
     rows = [
-        ("Asignados",                 m_prev.asignados,          m_curr.asignados),
-        ("Calificados",               m_prev.calificados,        m_curr.calificados),
-        ("Cierres pauta",             m_prev.cierres_marketing,  m_curr.cierres_marketing),
-        ("Cierres referidos",         m_prev.cierres_referidos,  m_curr.cierres_referidos),
-        ("Cierres totales (1+2+3+4)", m_prev.total_cierres,      m_curr.total_cierres),
+        ("Asignados",                 m_prev.asignados,              m_curr.asignados),
+        ("Calificados",               m_prev.calificados,            m_curr.calificados),
+        ("Cierres pauta",             m_prev.cierres_marketing,      m_curr.cierres_marketing),
+        ("Cierres referidos",         m_prev.cierres_referidos,      m_curr.cierres_referidos),
+        ("Cierres totales (1+2+3+4)", m_prev.total_cierres_general,  m_curr.total_cierres_general),
     ]
     return pd.DataFrame(rows, columns=["Indicador", "mes_anterior", "mes_actual"])

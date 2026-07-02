@@ -13,6 +13,7 @@ def df():
         {
             "creado": datetime(2026, 1, 5),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 1, 10),
@@ -23,6 +24,7 @@ def df():
         {
             "creado": datetime(2026, 2, 1),
             "propietario": "ana",
+            "estado": "en transito",
             "Motivo de no cierre": "no se logró contactar",
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,
@@ -33,9 +35,10 @@ def df():
         {
             "creado": datetime(2026, 1, 15),
             "propietario": "carlos",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
-            "Cantidad de cierres": None,
-            "Fecha de cierre": pd.NaT,
+            "Cantidad de cierres": 1.0,
+            "Fecha de cierre": datetime(2026, 1, 20),
             "canal online": "inbox-referral",
             "Canal offline": "referido - amigo",
             "Origen de la pauta": None,

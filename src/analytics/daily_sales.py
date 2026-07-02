@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.analytics.metrics import _is_active_estado
+
 _CLOSE_COLS = [
     "Fecha de cierre",
     "Fecha de segundo cierre",
@@ -26,12 +28,13 @@ def daily_sales_total(
     if advisors and "propietario" in df.columns:
         df = df[df["propietario"].isin(advisors)]
 
+    active = df.apply(_is_active_estado, axis=1) if not df.empty else pd.Series(dtype=bool)
     records: list = []
     for col in _CLOSE_COLS:
         if col not in df.columns:
             continue
         s = pd.to_datetime(df[col], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+        mask = (s.dt.year == year) & (s.dt.month == month) & active
         records.extend(s[mask].dt.date.tolist())
 
     if not records:
@@ -57,12 +60,13 @@ def daily_sales_by_advisor(
     if advisors and "propietario" in df.columns:
         df = df[df["propietario"].isin(advisors)]
 
+    active = df.apply(_is_active_estado, axis=1) if not df.empty else pd.Series(dtype=bool)
     parts: list[pd.DataFrame] = []
     for col in _CLOSE_COLS:
         if col not in df.columns:
             continue
         s = pd.to_datetime(df[col], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+        mask = (s.dt.year == year) & (s.dt.month == month) & active
         if not mask.any():
             continue
         subset = df.loc[mask, ["propietario"]].copy()

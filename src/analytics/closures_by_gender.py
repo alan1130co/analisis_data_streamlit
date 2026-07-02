@@ -1,7 +1,7 @@
 import unicodedata
 import pandas as pd
 import gender_guesser.detector as gender
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _is_active_estado
 
 
 _detector = gender.Detector(case_sensitive=False)
@@ -129,12 +129,13 @@ def closures_by_gender(
         "Fecha de tercer cierre", "Fecha de 4to cierre",
     ]
 
+    active = df_full.apply(_is_active_estado, axis=1)
     rows = []
     for col in closure_cols:
         if col not in df_full.columns:
             continue
         s = pd.to_datetime(df_full[col], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+        mask = (s.dt.year == year) & (s.dt.month == month) & active
         sub = df_full[mask]
         if sub.empty:
             continue

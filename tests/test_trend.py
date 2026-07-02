@@ -14,6 +14,7 @@ def df():
         {
             "creado": datetime(2026, 1, 5),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 1, 10),
@@ -21,6 +22,7 @@ def df():
         {
             "creado": datetime(2026, 2, 1),
             "propietario": "ana",
+            "estado": "en transito",
             "Motivo de no cierre": "no se logró contactar",
             "Cantidad de cierres": None,
             "Fecha de cierre": pd.NaT,
@@ -28,6 +30,7 @@ def df():
         {
             "creado": datetime(2026, 3, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": 1.0,
             "Fecha de cierre": datetime(2026, 3, 5),
@@ -99,6 +102,7 @@ def test_trend_cierres_es_suma_de_4_columnas_y_no_filtra_team():
             "creado": pd.Timestamp("2026-04-01"),
             "Canal offline": "Clientify - Whatsapp",
             "canal online": "paid social",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-04-05"),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT,
@@ -111,6 +115,7 @@ def test_trend_cierres_es_suma_de_4_columnas_y_no_filtra_team():
             "creado": pd.Timestamp("2026-04-02"),
             "Canal offline": "Referido externo",
             "canal online": "inbox-referral",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-04-10"),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT,
@@ -123,6 +128,7 @@ def test_trend_cierres_es_suma_de_4_columnas_y_no_filtra_team():
             "creado": pd.Timestamp("2026-03-01"),
             "Canal offline": "Referido externo",
             "canal online": "inbox-referral",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-03-15"),
             "Fecha de segundo cierre": pd.Timestamp("2026-04-20"),
             "Fecha de tercer cierre": pd.NaT,

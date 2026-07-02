@@ -31,6 +31,7 @@ def test_match_cp_con_clientify():
         "nombre": "Juan Pérez", "teléfono 1": "3055551234",
         "correo electrónico 1": "juan@gmail.com",
         "Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
+        "estado": "activo",
         "Fecha de cierre": pd.Timestamp("2026-06-15"),
         "Fecha de segundo cierre": pd.NaT,
         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,

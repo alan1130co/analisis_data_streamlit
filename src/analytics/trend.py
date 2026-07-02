@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 
 from src.analytics.filters import filter_by_month
-from src.analytics.metrics import is_qualified_mask
+from src.analytics.metrics import is_qualified_mask, _is_active_estado
 from src.config.settings import FOUNDING_DATE
 
 
@@ -18,14 +18,16 @@ _CLOSE_COLS = [
 ]
 
 
-def _count_cierres_en_mes(df: pd.DataFrame, year: int, month: int) -> int:
-    """Cuenta cierres del mes iterando las 4 columnas de fecha de cierre sobre el dataset completo."""
+def _count_cierres_en_mes(df: pd.DataFrame, active: pd.Series, year: int, month: int) -> int:
+    """Cuenta cierres válidos (Activo) del mes iterando las 4 columnas de fecha de cierre."""
+    if df.empty:
+        return 0
     total = 0
     for col in _CLOSE_COLS:
         if col not in df.columns:
             continue
         s = pd.to_datetime(df[col], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+        mask = (s.dt.year == year) & (s.dt.month == month) & active
         total += int(mask.sum())
     return total
 
@@ -43,6 +45,7 @@ def monthly_trend(
     Meses sin datos aparecen con ceros para no dejar huecos en el gráfico.
     """
     df_full = df[df["propietario"].isin(advisors)] if advisors and "propietario" in df.columns else df
+    active_full = df_full.apply(_is_active_estado, axis=1) if not df_full.empty else pd.Series(dtype=bool)
 
     months: list[date] = []
     y, m = FOUNDING_DATE
@@ -58,7 +61,7 @@ def monthly_trend(
 
         asignados = int(df_month["propietario"].notna().sum()) if not df_month.empty and "propietario" in df_month.columns else 0
         calificados = int(is_qualified_mask(df_month).sum()) if not df_month.empty else 0
-        cierres = _count_cierres_en_mes(df_full, month_date.year, month_date.month)
+        cierres = _count_cierres_en_mes(df_full, active_full, month_date.year, month_date.month)
 
         rows.append({
             "mes": month_date.strftime("%Y-%m"),

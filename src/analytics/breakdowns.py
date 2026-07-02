@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import is_marketing, is_qualified_mask
+from src.analytics.metrics import is_marketing, is_qualified_mask, _safe_str, _is_active_estado
 from src.config.settings import REFERIDO_PREFIX
 
 _CLOSE_COLS = [
@@ -175,8 +175,8 @@ def pauta_vs_referidos(df_period: pd.DataFrame, df_full: pd.DataFrame) -> pd.Dat
     """
     Cierres del mes divididos en Pauta (is_marketing) y Referidos.
 
-    Cuenta cierres reales sumando las 4 fechas de cierre de df_full que caen en el mes.
-    Columnas: Origen, Cantidad, Porcentaje.
+    Cuenta cierres válidos (estado Activo) sumando las 4 fechas de cierre de
+    df_full que caen en el mes. Columnas: Origen, Cantidad, Porcentaje.
     """
     empty = pd.DataFrame([
         {"Origen": "Pauta", "Cantidad": 0, "Porcentaje": 0.0},
@@ -187,15 +187,17 @@ def pauta_vs_referidos(df_period: pd.DataFrame, df_full: pd.DataFrame) -> pd.Dat
 
     year, month = _infer_period(df_period)
     mkt_mask_full = df_full.apply(is_marketing, axis=1)
+    active_full = df_full.apply(_is_active_estado, axis=1)
 
     pauta_n = 0
     ref_n = 0
-    # Solo "Fecha de cierre" (1ra columna), consistente con total_cierres
-    if "Fecha de cierre" in df_full.columns:
-        dt = pd.to_datetime(df_full["Fecha de cierre"], errors="coerce")
-        in_month = (dt.dt.year == year) & (dt.dt.month == month)
-        pauta_n = int((in_month & mkt_mask_full).sum())
-        ref_n = int((in_month & ~mkt_mask_full).sum())
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        dt = pd.to_datetime(df_full[col], errors="coerce")
+        in_month = (dt.dt.year == year) & (dt.dt.month == month) & active_full
+        pauta_n += int((in_month & mkt_mask_full).sum())
+        ref_n += int((in_month & ~mkt_mask_full).sum())
 
     total = pauta_n + ref_n
 
@@ -232,15 +234,17 @@ def cierres_por_canal(
         return empty
 
     year, month = _infer_period(df_period)
+    active_full = df_full.apply(_is_active_estado, axis=1)
 
-    # Solo "Fecha de cierre" (1ra columna), consistente con total_cierres
     rows = []
-    if "Fecha de cierre" in df_full.columns:
-        s = pd.to_datetime(df_full["Fecha de cierre"], errors="coerce")
-        mask = (s.dt.year == year) & (s.dt.month == month)
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        s = pd.to_datetime(df_full[col], errors="coerce")
+        mask = (s.dt.year == year) & (s.dt.month == month) & active_full
         sub = df_full[mask]
         for _, row in sub.iterrows():
-            canal = str(row.get("Canal offline", "") or "").strip()
+            canal = _safe_str(row.get("Canal offline", "")).strip()
             if not canal or canal.lower() in {"nan", "none"}:
                 canal = "Sin canal (referido)"
 

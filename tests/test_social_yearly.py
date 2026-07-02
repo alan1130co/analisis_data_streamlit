@@ -13,6 +13,7 @@ def df():
         {
             "creado": datetime(2026, 1, 5),
             "propietario": "sofia",
+            "estado": "activo",
             "canal online": "paid social",
             "Canal offline": "clientify - facebook",
             "Origen de la pauta": "facebook",
@@ -25,6 +26,7 @@ def df():
         {
             "creado": datetime(2026, 1, 10),
             "propietario": "ana",
+            "estado": "en transito",
             "canal online": "inbox-referral",
             "Canal offline": "referido - amigo",
             "Origen de la pauta": None,
@@ -37,6 +39,7 @@ def df():
         {
             "creado": datetime(2026, 2, 1),
             "propietario": "sofia",
+            "estado": "en transito",
             "canal online": "paid social",
             "Canal offline": "clientify - instagram",
             "Origen de la pauta": "instagram",

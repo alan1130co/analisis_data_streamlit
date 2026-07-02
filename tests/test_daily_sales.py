@@ -13,6 +13,7 @@ def df():
         {
             "creado": datetime(2026, 4, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "Fecha de cierre": datetime(2026, 4, 5),
             "Fecha de segundo cierre": datetime(2026, 4, 10),
             "Fecha de tercer cierre": pd.NaT,
@@ -21,6 +22,7 @@ def df():
         {
             "creado": datetime(2026, 4, 2),
             "propietario": "ana",
+            "estado": "activo",
             "Fecha de cierre": datetime(2026, 4, 5),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT,
@@ -29,6 +31,7 @@ def df():
         {
             "creado": datetime(2026, 3, 1),
             "propietario": "sofia",
+            "estado": "activo",
             "Fecha de cierre": datetime(2026, 3, 5),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT,

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import pandas as pd
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _is_active_estado
 
 
 @dataclass
@@ -85,12 +85,13 @@ def compute_investment_metrics(
         leads_pauta = 0 if df_periodo.empty else int(df_periodo.apply(is_marketing, axis=1).sum())
 
         cierres_pauta = 0
+        active_full = df_clientify.apply(_is_active_estado, axis=1)
         for col in ["Fecha de cierre", "Fecha de segundo cierre",
                     "Fecha de tercer cierre", "Fecha de 4to cierre"]:
             if col not in df_clientify.columns:
                 continue
             s = pd.to_datetime(df_clientify[col], errors="coerce")
-            mask = (s.dt.year == year) & (s.dt.month == month)
+            mask = (s.dt.year == year) & (s.dt.month == month) & active_full
             sub = df_clientify[mask]
             if sub.empty:
                 continue

@@ -65,7 +65,3 @@ def render_kpi_cards(
         c2.metric("2do cierre", metrics.cierres_2)
         c3.metric("3er cierre", metrics.cierres_3)
         c4.metric("4to cierre", metrics.cierres_4)
-        st.caption(
-            f"Leads de redes: **{metrics.leads_redes}** · "
-            f"Cierres de redes: **{metrics.cierres_redes}**"
-        )

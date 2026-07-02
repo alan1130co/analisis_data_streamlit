@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 
-from src.analytics.metrics import is_marketing
+from src.analytics.metrics import is_marketing, _safe_str, _is_active_estado
 
 
 _EXCLUIDOS = {"nan", "none", "sin definir", "no aplica"}
@@ -30,8 +30,20 @@ def _es_etiqueta_admin(publi: str) -> bool:
     return any(tag in low for tag in _ADMIN_LABELS)
 
 
-def _mapear_canal_a_red(canal_offline: str) -> str:
-    """Mapea Canal offline a red social/categoria para el donut."""
+def _mapear_canal_a_red(canal_offline: str, origen_pauta: str = "") -> str:
+    """Mapea a red social/categoria para el donut.
+
+    "Origen de la pauta" es la señal autoritativa para Facebook/Instagram:
+    cierres de Click-to-Message llegan con Canal offline genérico
+    (p.ej. "Clientify - Whatsapp" o vacío), así que si no se prioriza el
+    Origen, esos cierres de Instagram no se pintan en el reporte.
+    """
+    origen = (origen_pauta or "").strip().lower()
+    if "instagram" in origen:
+        return "Instagram"
+    if "facebook" in origen:
+        return "Facebook"
+
     if not canal_offline:
         return ""
     c = canal_offline.strip().lower()
@@ -76,7 +88,8 @@ def closures_by_publication(
         return pd.DataFrame(columns=["Publicacion", "Cierres", "Porcentaje"])
 
     s = pd.to_datetime(df_clientify[col], errors="coerce")
-    mask = (s.dt.year == year) & (s.dt.month == month)
+    active = df_clientify.apply(_is_active_estado, axis=1)
+    mask = (s.dt.year == year) & (s.dt.month == month) & active
     sub = df_clientify[mask]
 
     for _, row in sub.iterrows():
@@ -123,15 +136,17 @@ def closures_by_origen_pauta(
         return pd.DataFrame(columns=["Origen", "Cierres", "Porcentaje"])
 
     s = pd.to_datetime(df_clientify[col], errors="coerce")
-    mask = (s.dt.year == year) & (s.dt.month == month)
+    active = df_clientify.apply(_is_active_estado, axis=1)
+    mask = (s.dt.year == year) & (s.dt.month == month) & active
     sub = df_clientify[mask]
 
     rows = []
     for _, row in sub.iterrows():
         if not is_marketing(row):
             continue
-        canal = str(row.get("Canal offline", "") or "").strip()
-        origen = _mapear_canal_a_red(canal)
+        canal = _safe_str(row.get("Canal offline", "")).strip()
+        origen_pauta = _safe_str(row.get("Origen de la pauta", "")).strip()
+        origen = _mapear_canal_a_red(canal, origen_pauta)
         if not origen:
             continue
         rows.append({"Origen": origen})

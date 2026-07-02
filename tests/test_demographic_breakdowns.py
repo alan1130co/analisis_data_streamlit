@@ -8,6 +8,7 @@ def test_closures_by_country_filtra_por_team():
         {
             "creado": pd.Timestamp("2026-04-01"), "país": "USA",
             "Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-04-05"),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
@@ -15,6 +16,7 @@ def test_closures_by_country_filtra_por_team():
         {
             "creado": pd.Timestamp("2026-04-02"), "país": "Mexico",
             "Canal offline": "Referido externo", "canal online": "inbox-referral",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-04-10"),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
@@ -37,6 +39,7 @@ def test_closures_by_country_pais_vacio_es_no_registrado():
         {
             "creado": pd.Timestamp("2026-04-01"), "país": "",
             "Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-04-05"),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
@@ -60,6 +63,7 @@ def test_closures_by_age_calcula_edad_correcta():
             "creado": pd.Timestamp("2026-04-01"),
             "cumpleaños": pd.Timestamp("1990-06-15"),
             "Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
+            "estado": "activo",
             "Fecha de cierre": pd.Timestamp("2026-04-15"),
             "Fecha de segundo cierre": pd.NaT,
             "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
