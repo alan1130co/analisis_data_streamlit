@@ -33,24 +33,19 @@ KPI_DEFINITIONS_REFERIDOS: list[KPIDefinition] = [
     KPIDefinition("eficiencia_total",        "% Eficiencia global",    "📊", "#EA580C", "percent"),
 ]
 
-# Orden estricto requerido por Soluciones Migratorias (10 tarjetas principales).
+# Layout original de 8 tarjetas (revertido a pedido de Soluciones Migratorias:
+# la grilla de 10 tarjetas "se descuadró" visualmente). Orgánico+TikTok va
+# unificado en una sola tarjeta de control; las 2 eficiencias van dentro de
+# la misma grilla, no en una sección aparte.
 KPI_DEFINITIONS_TODOS: list[KPIDefinition] = [
-    KPIDefinition("creados",              "Creados del mes",              "📋", "#0F172A", "int"),
-    KPIDefinition("asignados",            "Total Leads Asignados",        "🧑‍💼", "#334155", "int"),
-    KPIDefinition("asignados_pauta",      "Leads Pauta Asignados",        "🎯", "#16A34A", "int"),
-    KPIDefinition("leads_organico_tiktok", "Leads Orgánicos y TikTok",    "🌱", "#059669", "int"),
-    KPIDefinition("calificados",          "Calificados",                  "✅", "#2563EB", "int"),
-    KPIDefinition("no_calificados",       "No calificados",               "❌", "#DC2626", "int"),
-    KPIDefinition("cierres_marketing",    "Cierres Pauta (M)",            "🏆", "#16A34A", "int"),
-    KPIDefinition("cierres_no_pauta",     "Cierres Referidos (R)",        "🤝", "#D97706", "int"),
-    KPIDefinition("cierres_adicionales",  "Cierres Adicionales",          "🔁", "#0891B2", "int"),
-    KPIDefinition("total_cierres_general", "Total Cierres (M+R)",         "📊", "#0EA5E9", "int"),
-]
-
-# Fórmulas de eficiencia destacadas (no forman parte de la grilla de 10 tarjetas).
-KPI_DEFINITIONS_EFICIENCIA: list[KPIDefinition] = [
-    KPIDefinition("eficiencia_pauta",  "% Eficiencia de Pauta",  "📈", "#7C3AED", "percent_raw"),
-    KPIDefinition("eficiencia_global", "% Eficiencia Global",    "🚀", "#EA580C", "percent_raw"),
+    KPIDefinition("creados",              "Creados del mes",           "📋", "#0F172A", "int"),
+    KPIDefinition("leads_pauta",          "Leads Pauta",                "🎯", "#16A34A", "int"),
+    KPIDefinition("leads_organico_tiktok", "Leads Orgánicos y TikTok", "🌱", "#059669", "int"),
+    KPIDefinition("calificados",          "Calificados",                "✅", "#2563EB", "int"),
+    KPIDefinition("no_calificados",       "No calificados",             "❌", "#DC2626", "int"),
+    KPIDefinition("total_cierres",        "Total Cierres",              "🏆", "#0EA5E9", "int"),
+    KPIDefinition("eficiencia_pauta",     "% Eficiencia Pauta",         "📈", "#7C3AED", "percent_raw"),
+    KPIDefinition("eficiencia_global",    "% Eficiencia Global",        "📊", "#EA580C", "percent_raw"),
 ]
 
 

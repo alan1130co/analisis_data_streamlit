@@ -49,16 +49,3 @@
 .kpi-delta-up   { color: var(--color-success); }
 .kpi-delta-down { color: var(--color-danger); }
 .kpi-delta-flat { color: #9CA3AF; }
-
-.kpi-grid-eficiencia {
-    margin-top: calc(-1 * var(--space-md) + var(--space-xs));
-}
-
-.kpi-card-highlight {
-    border: 2px solid var(--color-primary, #7C3AED);
-    background: linear-gradient(180deg, rgba(124, 58, 237, 0.06), var(--color-card));
-}
-
-.kpi-card-highlight .kpi-value {
-    font-size: clamp(1.6rem, 3.4vw, 2.6rem);
-}

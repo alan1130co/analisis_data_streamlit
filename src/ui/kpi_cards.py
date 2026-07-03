@@ -2,7 +2,7 @@
 import streamlit as st
 
 from src.analytics.metrics import Metrics
-from src.analytics.kpis import get_kpi_definitions, KPI_DEFINITIONS_EFICIENCIA
+from src.analytics.kpis import get_kpi_definitions
 from src.utils.formatters import format_int, format_percent, format_percent_raw
 
 
@@ -73,27 +73,6 @@ def render_kpi_cards(
         f'<div class="kpi-grid">{"".join(cards)}</div>',
         unsafe_allow_html=True,
     )
-
-    if team not in ("Marketing (pautas)", "Referidos"):
-        eficiencia_cards = []
-        for kpi in KPI_DEFINITIONS_EFICIENCIA:
-            value = data.get(kpi.key, 0)
-            formatted = _format_value(value, kpi.format)
-            delta = ""
-            if metrics_prev is not None:
-                prev_val = prev_data.get(kpi.key, 0)
-                delta = _delta_html(value, prev_val, kpi.format)
-            eficiencia_cards.append(
-                f'<div class="kpi-card kpi-card-highlight">'
-                f'<div class="kpi-value" style="color: {kpi.color};">{formatted}</div>'
-                f'<div class="kpi-label">{kpi.icon} {kpi.label}</div>'
-                f'{delta}'
-                f'</div>'
-            )
-        st.markdown(
-            f'<div class="kpi-grid kpi-grid-eficiencia">{"".join(eficiencia_cards)}</div>',
-            unsafe_allow_html=True,
-        )
 
     with st.expander("Desglose de cierres por etapa"):
         c1, c2, c3, c4 = st.columns(4)

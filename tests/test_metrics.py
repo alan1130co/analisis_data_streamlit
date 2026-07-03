@@ -375,20 +375,38 @@ def test_leads_pauta_organico_tiktok_generales():
     assert m.leads_tiktok == 1
 
 
-def test_leads_organico_tiktok_suman_cesar_augusto_no_activos_por_canal():
-    """Los leads de César Augusto NO activos se clasifican por su canal real
-    (sin duplicar) y se suman a Orgánico/TikTok; sus leads activos, o sin canal, no."""
+def test_cesar_augusto_messenger_instagram_suman_a_organico_tiktok_sin_importar_estado():
+    """Suma 1 (César + Messenger/Instagram): cuenta siempre, sin importar el
+    estado — 'representan comentarios de usuarios'. No se divide entre las
+    tarjetas individuales de Orgánico/TikTok, solo en el total combinado."""
     df = pd.DataFrame([
-        # César, no activo, canal Tiktok → suma a TikTok
+        # César, Messenger, ACTIVO → sí cuenta (no hay filtro de estado)
+        _lead("Messenger", "Cesar Augusto Perez Tafur", estado=_ACTIVO),
+        # César, Instagram, en tránsito → sí cuenta
+        _lead("Instagram", "Cesar Augusto Perez Tafur", estado="en transito"),
+        # César, Facebook → NO cuenta (Suma 1 es solo Messenger/Instagram)
+        _lead("Clientify - Facebook", "Cesar Augusto Perez Tafur", estado="en transito"),
+        # César, TikTok literal → NO cuenta (fuera de Suma 1 y excluido de Suma 2)
         _lead("Tiktok", "Cesar Augusto Perez Tafur", estado="en transito"),
-        # César, no activo, sin canal → no suma a nada (no clasifica)
-        _lead(None, "Cesar Augusto Perez Tafur", estado="en transito"),
-        # César, ACTIVO, canal Orgánico → no debe sumar (solo cuentan los no-activos)
-        _lead("Orgánico", "Cesar Augusto Perez Tafur", estado=_ACTIVO),
     ])
     m = compute_all_metrics(df, df)
-    assert m.leads_tiktok == 1
-    assert m.leads_organico == 0
+    assert m.leads_organico_tiktok == 2  # Messenger + Instagram, nada más
+    assert m.leads_organico == 0  # Suma 1 no se reparte a la tarjeta individual
+    assert m.leads_tiktok == 0
+
+
+def test_leads_organico_tiktok_generales_no_incluyen_a_cesar():
+    """Leads de Orgánico/TikTok de OTROS asesores (no César) se cuentan normal
+    vía Suma 2, sin verse afectados por la regla especial de César."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia"),
+        _lead("Tiktok", "ana"),
+        _lead("Instagram", "Cesar Augusto Perez Tafur"),  # Suma 1, no Suma 2
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 1       # sofia
+    assert m.leads_tiktok == 1         # ana
+    assert m.leads_organico_tiktok == 3  # sofia + ana + césar (suma 1)
 
 
 def test_leads_pauta_no_afectado_por_filtro_cesar():
@@ -457,29 +475,22 @@ def test_eficiencia_bruta_formula():
 # Tarjetas KPI
 # ---------------------------------------------------------------------------
 
-def test_get_kpi_definitions_todos_devuelve_10_tarjetas():
+def test_get_kpi_definitions_todos_devuelve_8_tarjetas():
+    """Layout original de 8 tarjetas (revertida la grilla de 10)."""
     from src.analytics.kpis import get_kpi_definitions
-    assert len(get_kpi_definitions("Todos")) == 10
+    assert len(get_kpi_definitions("Todos")) == 8
 
 
-def test_kpi_todos_incluye_nuevas_tarjetas_en_orden_soluciones_migratorias():
-    """Orden estricto requerido: Creados, Asignados, Pauta Asignados, Organico+TikTok,
-    Calificados, No calificados, Cierres Pauta (M), Cierres Referidos (R),
-    Cierres Adicionales, Total Cierres (M+R)."""
+def test_kpi_todos_incluye_tarjetas_en_orden_original_con_organico_tiktok_unificado():
+    """Orden: Creados, Leads Pauta, Leads Organico+TikTok (unificado), Calificados,
+    No calificados, Total Cierres, % Eficiencia Pauta, % Eficiencia Global."""
     from src.analytics.kpis import KPI_DEFINITIONS_TODOS
     keys = [k.key for k in KPI_DEFINITIONS_TODOS]
     assert keys == [
-        "creados", "asignados", "asignados_pauta", "leads_organico_tiktok",
-        "calificados", "no_calificados",
-        "cierres_marketing", "cierres_no_pauta", "cierres_adicionales",
-        "total_cierres_general",
+        "creados", "leads_pauta", "leads_organico_tiktok",
+        "calificados", "no_calificados", "total_cierres",
+        "eficiencia_pauta", "eficiencia_global",
     ]
-
-
-def test_kpi_definitions_eficiencia_destacadas():
-    from src.analytics.kpis import KPI_DEFINITIONS_EFICIENCIA
-    keys = [k.key for k in KPI_DEFINITIONS_EFICIENCIA]
-    assert keys == ["eficiencia_pauta", "eficiencia_global"]
 
 
 # ---------------------------------------------------------------------------
@@ -536,26 +547,57 @@ def test_cierres_no_pauta_agrupa_organico_tiktok_y_referidos_sin_fuga():
     assert m.cierres_marketing + m.cierres_no_pauta == m.total_cierres_general == 4
 
 
-def test_eficiencia_global_formula():
-    """% Eficiencia Global = (Cierres Pauta+Organico+TikTok)*100 /
-    (Leads Asignados de Pauta+Organico+TikTok)."""
+def test_eficiencia_pauta_usa_total_asignados_no_solo_asignados_pauta():
+    """% Eficiencia de Pauta = (Cierres por Pauta * 100) / Total Asignado a los
+    Asesores (universo completo, no solo el subconjunto de pauta) — para que
+    no dé un porcentaje inflado cuando hay leads de otros canales."""
     df = pd.DataFrame([
-        # Pauta, asignado, con cierre válido
+        # Pauta, asignada, 1 cierre válido
         {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": _ACTIVO,
          "canal online": "paid social", "Canal offline": "clientify - facebook",
          "Origen de la pauta": "facebook", "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5),
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Orgánico, asignado, sin cierre
+        # Referido, asignado (NO es pauta) — antes no entraba en el denominador
         {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": "en transito",
-         "canal online": None, "Canal offline": "orgánico",
+         "canal online": "inbox-referral", "Canal offline": "referido - amigo",
          "Origen de la pauta": None, "Motivo de no cierre": None,
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
     m = compute_all_metrics(df, df)
-    # asignados_pauta=1, asignados_organico=1, asignados_tiktok=0 -> denom=2
-    # cierres_marketing=1, cierres_organico=0, cierres_tiktok=0 -> numerador=1
+    assert m.asignados == 2
+    assert m.asignados_pauta == 1
+    assert m.cierres_marketing == 1
+    # Con la fórmula vieja (asignados_pauta=1) daría 100%; con la nueva (asignados=2) da 50%.
+    assert m.eficiencia_pauta == pytest.approx(1 * 100 / 2)
+
+
+def test_eficiencia_global_usa_total_cierres_general_y_asignados_totales():
+    """% Eficiencia Global = (Total Cierres de TODA la operación * 100) /
+    Total Asignado a los Asesores — debe reflejar también los cierres de
+    Referidos (antes la fórmula los ignoraba por completo en el numerador,
+    dando 0% pese a haber cierres reales)."""
+    df = pd.DataFrame([
+        # Pauta, asignada, SIN cierre
+        {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": "en transito",
+         "canal online": "paid social", "Canal offline": "clientify - facebook",
+         "Origen de la pauta": "facebook", "Motivo de no cierre": None,
+         "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Referido, asignado, CON cierre válido
+        {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": _ACTIVO,
+         "canal online": "inbox-referral", "Canal offline": "referido - amigo",
+         "Origen de la pauta": None, "Motivo de no cierre": None,
+         "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 10),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.asignados == 2
+    assert m.total_cierres_general == 1  # el cierre de Referidos
+    assert m.total_cierres == 0          # el KPI legado (solo pauta+organico) lo ignora
+    # Con la fórmula vieja (numerador solo pauta+organico+tiktok=0) daría 0% pese
+    # al cierre real de Referidos; la nueva sí lo refleja: 1*100/2 = 50%.
     assert m.eficiencia_global == pytest.approx(1 * 100 / 2)
 
 

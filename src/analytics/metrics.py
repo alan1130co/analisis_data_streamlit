@@ -22,6 +22,7 @@ from src.config.settings import (
     CIERRE_VALID_ESTADOS,
     NON_COMMERCIAL_OWNERS,
     CESAR_AUGUSTO_PREFIX,
+    CESAR_COMENTARIOS_CHANNELS,
 )
 
 CLOSE_DATE_COLS = [
@@ -169,6 +170,18 @@ def is_cesar_augusto(row) -> bool:
     """True si el propietario del lead es Cesar Augusto (único con ese nombre en el sistema)."""
     propietario = _safe_str(row.get("propietario", "")).strip().lower()
     return propietario.startswith(CESAR_AUGUSTO_PREFIX)
+
+
+def is_cesar_comentario(row) -> bool:
+    """True si el lead es de César Augusto y su Canal offline es Messenger o Instagram.
+
+    Representan comentarios de usuarios en redes: cuentan siempre para
+    Orgánico+TikTok, sin importar el estado actual del lead.
+    """
+    if not is_cesar_augusto(row):
+        return False
+    canal_off = _safe_str(row.get("Canal offline", "")).strip().lower()
+    return canal_off in CESAR_COMENTARIOS_CHANNELS
 
 
 def is_asesor_comercial(propietario) -> bool:
@@ -345,22 +358,19 @@ def compute_all_metrics(
     tiktok_mask = df_period.apply(is_tiktok, axis=1)
     organico_mask = df_period.apply(is_organico, axis=1)
     cesar_mask = df_period.apply(is_cesar_augusto, axis=1)
-    active_mask = df_period.apply(_is_active_estado, axis=1)
-    cesar_no_activo_mask = cesar_mask & ~active_mask
+    cesar_comentarios_mask = df_period.apply(is_cesar_comentario, axis=1)
 
     # "Leads generales" de Orgánico/TikTok excluyen a César Augusto: sus leads
-    # solo entran vía el filtro específico (no activos, clasificados por canal real).
+    # solo entran vía Suma 1 (Messenger/Instagram, ver is_cesar_comentario),
+    # sin importar su estado — no se dividen entre Orgánico/TikTok individualmente.
     organico_generales_mask = organico_mask & ~cesar_mask
     tiktok_generales_mask = tiktok_mask & ~cesar_mask
-    cesar_organico_mask = cesar_no_activo_mask & organico_mask
-    cesar_tiktok_mask = cesar_no_activo_mask & tiktok_mask
 
     leads_pauta = int(mkt_mask.sum())
-    organico_mask_total = organico_generales_mask | cesar_organico_mask
-    tiktok_mask_total = tiktok_generales_mask | cesar_tiktok_mask
-    leads_organico = int(organico_mask_total.sum())
-    leads_tiktok = int(tiktok_mask_total.sum())
-    leads_organico_tiktok = leads_organico + leads_tiktok
+    leads_organico = int(organico_generales_mask.sum())
+    leads_tiktok = int(tiktok_generales_mask.sum())
+    # Suma 1 (César + Messenger/Instagram) + Suma 2 (TikTok estricto + Orgánico puro).
+    leads_organico_tiktok = leads_organico + leads_tiktok + int(cesar_comentarios_mask.sum())
 
     # --- Asignados: solo Asesores Comerciales ---
     if "propietario" in df_period.columns:
@@ -370,8 +380,8 @@ def compute_all_metrics(
     df_asignados = df_period[asignado_mask]
     asignados = int(asignado_mask.sum())
     asignados_pauta = int((asignado_mask & mkt_mask).sum())
-    asignados_organico = int((asignado_mask & organico_mask_total).sum())
-    asignados_tiktok = int((asignado_mask & tiktok_mask_total).sum())
+    asignados_organico = int((asignado_mask & organico_generales_mask).sum())
+    asignados_tiktok = int((asignado_mask & tiktok_generales_mask).sum())
 
     # --- Embudo estricto: Calificados/No calificados sobre Asignados ---
     calificados = int(is_qualified_mask(df_asignados).sum()) if not df_asignados.empty else 0
@@ -394,15 +404,16 @@ def compute_all_metrics(
     )
 
     # --- Eficiencias (fórmulas exactas) ---
-    eficiencia_pauta = (cierres_marketing * 100 / asignados_pauta) if asignados_pauta else 0.0
+    # % Eficiencia de Pauta = (Cierres por Pauta * 100) / Total Asignado a los Asesores
+    # (el universo total de comerciales, no solo el subconjunto de pauta).
+    eficiencia_pauta = (cierres_marketing * 100 / asignados) if asignados else 0.0
     denom_bruta = asignados_pauta + leads_organico + leads_tiktok + calificados + no_calificados
     eficiencia_bruta = (total_cierres * 100 / denom_bruta) if denom_bruta else 0.0
 
-    cierres_pauta_organico_tiktok = cierres_marketing + cierres_organico_valid + cierres_tiktok_valid
-    denom_global = asignados_pauta + asignados_organico + asignados_tiktok
-    eficiencia_global = (
-        cierres_pauta_organico_tiktok * 100 / denom_global if denom_global else 0.0
-    )
+    # % Eficiencia Global = rendimiento real de TODA la operación: todos los
+    # cierres válidos (Pauta+Orgánico+TikTok+Referidos) sobre el volumen total
+    # de leads comerciales asignados (mismo denominador que Eficiencia de Pauta).
+    eficiencia_global = (total_cierres_general * 100 / asignados) if asignados else 0.0
 
     # --- Campos legados (mantener para compatibilidad con secciones/tests que ya existen) ---
     df_mkt = df_period[mkt_mask]

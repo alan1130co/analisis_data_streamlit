@@ -91,5 +91,9 @@ NON_COMMERCIAL_OWNERS = {"cartera sm", "alan david coneo rodriguez"}
 # --- César Augusto: único con este nombre en el sistema ---
 CESAR_AUGUSTO_PREFIX = "cesar augusto"
 
+# Canales que, para César Augusto, se consideran "comentarios de usuarios"
+# (Messenger/Instagram) y se suman a Orgánico+TikTok sin importar el estado.
+CESAR_COMENTARIOS_CHANNELS = {"messenger", "instagram"}
+
 # Fecha de inicio de operaciones de la empresa (año, mes)
 FOUNDING_DATE = (2024, 5)
