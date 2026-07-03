@@ -72,18 +72,25 @@ class Metrics:
     leads_pauta: int
     leads_organico: int
     leads_tiktok: int
+    leads_organico_tiktok: int       # leads_organico + leads_tiktok (tarjeta combinada)
     asignados: int
     asignados_pauta: int
+    asignados_organico: int
+    asignados_tiktok: int
     calificados: int
     no_calificados: int
     total_cierres: int              # Solo Pauta + Orgánico, válidos, suma 1+2+3+4
     eficiencia_pauta: float
     eficiencia_bruta: float
+    eficiencia_global: float         # (Cierres Pauta+Organico+TikTok)*100 / (Asignados Pauta+Organico+TikTok)
 
     # --- Usados por comparación / gráficas / secciones de detalle ---
     total_cierres_general: int      # Todas las fuentes, válidos, suma 1+2+3+4
     cierres_marketing: int          # Pauta, válidos, suma 1+2+3+4
-    cierres_referidos: int          # Referidos, válidos, suma 1+2+3+4
+    cierres_referidos: int          # Referidos estrictos (excluye Organico/TikTok), válidos, suma 1+2+3+4
+    cierres_organico: int           # Orgánico, válidos, suma 1+2+3+4
+    cierres_tiktok: int             # TikTok, válidos, suma 1+2+3+4
+    cierres_no_pauta: int           # Organico + TikTok + Referidos estrictos = "Referidos (R)" para tarjeta M+R
 
     # --- Campos legados (compatibilidad con secciones/tests existentes) ---
     no_calificados_pauta: int
@@ -301,12 +308,13 @@ def compute_all_metrics(
     if df_period.empty:
         return Metrics(
             creados=0,
-            leads_pauta=0, leads_organico=0, leads_tiktok=0,
-            asignados=0, asignados_pauta=0,
+            leads_pauta=0, leads_organico=0, leads_tiktok=0, leads_organico_tiktok=0,
+            asignados=0, asignados_pauta=0, asignados_organico=0, asignados_tiktok=0,
             calificados=0, no_calificados=0,
             total_cierres=0,
-            eficiencia_pauta=0.0, eficiencia_bruta=0.0,
+            eficiencia_pauta=0.0, eficiencia_bruta=0.0, eficiencia_global=0.0,
             total_cierres_general=0, cierres_marketing=0, cierres_referidos=0,
+            cierres_organico=0, cierres_tiktok=0, cierres_no_pauta=0,
             no_calificados_pauta=0, no_calificados_referido=0,
             creados_pauta=0, creados_referido=0,
             calificados_pauta=0, calificados_referido=0,
@@ -348,8 +356,11 @@ def compute_all_metrics(
     cesar_tiktok_mask = cesar_no_activo_mask & tiktok_mask
 
     leads_pauta = int(mkt_mask.sum())
-    leads_organico = int((organico_generales_mask | cesar_organico_mask).sum())
-    leads_tiktok = int((tiktok_generales_mask | cesar_tiktok_mask).sum())
+    organico_mask_total = organico_generales_mask | cesar_organico_mask
+    tiktok_mask_total = tiktok_generales_mask | cesar_tiktok_mask
+    leads_organico = int(organico_mask_total.sum())
+    leads_tiktok = int(tiktok_mask_total.sum())
+    leads_organico_tiktok = leads_organico + leads_tiktok
 
     # --- Asignados: solo Asesores Comerciales ---
     if "propietario" in df_period.columns:
@@ -359,6 +370,8 @@ def compute_all_metrics(
     df_asignados = df_period[asignado_mask]
     asignados = int(asignado_mask.sum())
     asignados_pauta = int((asignado_mask & mkt_mask).sum())
+    asignados_organico = int((asignado_mask & organico_mask_total).sum())
+    asignados_tiktok = int((asignado_mask & tiktok_mask_total).sum())
 
     # --- Embudo estricto: Calificados/No calificados sobre Asignados ---
     calificados = int(is_qualified_mask(df_asignados).sum()) if not df_asignados.empty else 0
@@ -373,6 +386,7 @@ def compute_all_metrics(
         return not (is_marketing(row) or is_organico(row) or is_tiktok(row))
 
     cierres_referidos = _sum_valid_closures(df_full, year, month, _is_referido)
+    cierres_no_pauta = cierres_organico_valid + cierres_tiktok_valid + cierres_referidos
 
     total_cierres = cierres_marketing + cierres_organico_valid
     total_cierres_general = (
@@ -383,6 +397,12 @@ def compute_all_metrics(
     eficiencia_pauta = (cierres_marketing * 100 / asignados_pauta) if asignados_pauta else 0.0
     denom_bruta = asignados_pauta + leads_organico + leads_tiktok + calificados + no_calificados
     eficiencia_bruta = (total_cierres * 100 / denom_bruta) if denom_bruta else 0.0
+
+    cierres_pauta_organico_tiktok = cierres_marketing + cierres_organico_valid + cierres_tiktok_valid
+    denom_global = asignados_pauta + asignados_organico + asignados_tiktok
+    eficiencia_global = (
+        cierres_pauta_organico_tiktok * 100 / denom_global if denom_global else 0.0
+    )
 
     # --- Campos legados (mantener para compatibilidad con secciones/tests que ya existen) ---
     df_mkt = df_period[mkt_mask]
@@ -450,12 +470,17 @@ def compute_all_metrics(
     return Metrics(
         creados=creados,
         leads_pauta=leads_pauta, leads_organico=leads_organico, leads_tiktok=leads_tiktok,
+        leads_organico_tiktok=leads_organico_tiktok,
         asignados=asignados, asignados_pauta=asignados_pauta,
+        asignados_organico=asignados_organico, asignados_tiktok=asignados_tiktok,
         calificados=calificados, no_calificados=no_calificados,
         total_cierres=total_cierres,
         eficiencia_pauta=eficiencia_pauta, eficiencia_bruta=eficiencia_bruta,
+        eficiencia_global=eficiencia_global,
         total_cierres_general=total_cierres_general,
         cierres_marketing=cierres_marketing, cierres_referidos=cierres_referidos,
+        cierres_organico=cierres_organico_valid, cierres_tiktok=cierres_tiktok_valid,
+        cierres_no_pauta=cierres_no_pauta,
         no_calificados_pauta=no_calificados_pauta,
         no_calificados_referido=no_calificados_referido,
         creados_pauta=creados_pauta,

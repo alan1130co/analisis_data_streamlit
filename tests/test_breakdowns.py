@@ -235,6 +235,20 @@ def test_pauta_vs_referidos_suma_100_porciento(df_period, df_full):
     assert ref["Cantidad"] == 1
 
 
+def test_pauta_vs_referidos_sin_fuga_coincide_con_total_cierres_general(df_period, df_full):
+    """Pauta + Referidos del gráfico debe coincidir EXACTAMENTE con
+    total_cierres_general del KPI (ninguna categoría — Organico/TikTok incluidos —
+    debe quedar fuera de ambos buckets)."""
+    from src.analytics.metrics import compute_all_metrics
+
+    result = pauta_vs_referidos(df_period, df_full)
+    total_grafico = int(result["Cantidad"].sum())
+    total_kpi = compute_all_metrics(df_period, df_full).total_cierres_general
+    assert total_grafico == total_kpi, (
+        f"Fuga detectada: gráfico={total_grafico}, KPI total_cierres_general={total_kpi}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # cierres_por_canal
 # ---------------------------------------------------------------------------

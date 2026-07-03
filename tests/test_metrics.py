@@ -457,16 +457,110 @@ def test_eficiencia_bruta_formula():
 # Tarjetas KPI
 # ---------------------------------------------------------------------------
 
-def test_get_kpi_definitions_todos_devuelve_9_tarjetas():
+def test_get_kpi_definitions_todos_devuelve_10_tarjetas():
     from src.analytics.kpis import get_kpi_definitions
-    assert len(get_kpi_definitions("Todos")) == 9
+    assert len(get_kpi_definitions("Todos")) == 10
 
 
-def test_kpi_todos_incluye_nuevas_tarjetas():
+def test_kpi_todos_incluye_nuevas_tarjetas_en_orden_soluciones_migratorias():
+    """Orden estricto requerido: Creados, Asignados, Pauta Asignados, Organico+TikTok,
+    Calificados, No calificados, Cierres Pauta (M), Cierres Referidos (R),
+    Cierres Adicionales, Total Cierres (M+R)."""
     from src.analytics.kpis import KPI_DEFINITIONS_TODOS
     keys = [k.key for k in KPI_DEFINITIONS_TODOS]
     assert keys == [
-        "creados", "leads_pauta", "leads_organico", "leads_tiktok",
-        "calificados", "no_calificados", "total_cierres",
-        "eficiencia_pauta", "eficiencia_bruta",
+        "creados", "asignados", "asignados_pauta", "leads_organico_tiktok",
+        "calificados", "no_calificados",
+        "cierres_marketing", "cierres_no_pauta", "cierres_adicionales",
+        "total_cierres_general",
     ]
+
+
+def test_kpi_definitions_eficiencia_destacadas():
+    from src.analytics.kpis import KPI_DEFINITIONS_EFICIENCIA
+    keys = [k.key for k in KPI_DEFINITIONS_EFICIENCIA]
+    assert keys == ["eficiencia_pauta", "eficiencia_global"]
+
+
+# ---------------------------------------------------------------------------
+# Nuevos campos: asignados por canal, tarjeta combinada, cierres_no_pauta,
+# eficiencia_global (fórmulas exactas pedidas para Soluciones Migratorias)
+# ---------------------------------------------------------------------------
+
+def test_leads_organico_tiktok_es_la_suma_de_ambos():
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia"),
+        _lead("Tiktok", "ana"),
+        _lead("Clientify - Facebook", "carlos"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico_tiktok == m.leads_organico + m.leads_tiktok == 2
+
+
+def test_asignados_organico_y_tiktok_solo_cuentan_asesores_comerciales():
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia"),          # asignado a asesor comercial
+        _lead("Tiktok", "cartera sm"),        # NO comercial → no debe contar
+        _lead("Orgánico", None),              # sin propietario → no asignado
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.asignados_organico == 1
+    assert m.asignados_tiktok == 0
+
+
+def test_cierres_no_pauta_agrupa_organico_tiktok_y_referidos_sin_fuga():
+    """cierres_no_pauta ('Referidos (R)' en la tarjeta) debe sumar Organico + TikTok +
+    Referidos estrictos, de forma que Cierres Pauta (M) + Cierres Referidos (R) sea
+    SIEMPRE igual a total_cierres_general (ninguna categoría se pierde)."""
+    _base = {
+        "propietario": "Sofia", "Motivo de no cierre": None, "Cantidad de cierres": 1.0,
+        "estado": _ACTIVO, "Fecha de segundo cierre": pd.NaT,
+        "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+    }
+    df = pd.DataFrame([
+        {**_base, "creado": datetime(2026, 4, 1),
+         "canal online": "paid social", "Canal offline": "clientify - facebook",
+         "Origen de la pauta": "facebook", "Fecha de cierre": datetime(2026, 4, 5)},
+        {**_base, "creado": datetime(2026, 4, 2),
+         "canal online": "inbox", "Canal offline": "orgánico",
+         "Origen de la pauta": None, "Fecha de cierre": datetime(2026, 4, 6)},
+        {**_base, "creado": datetime(2026, 4, 3),
+         "canal online": "inbox", "Canal offline": "tiktok",
+         "Origen de la pauta": None, "Fecha de cierre": datetime(2026, 4, 7)},
+        {**_base, "creado": datetime(2026, 4, 4),
+         "canal online": "inbox", "Canal offline": "referido externo",
+         "Origen de la pauta": None, "Fecha de cierre": datetime(2026, 4, 8)},
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.cierres_no_pauta == 3  # organico + tiktok + referido
+    assert m.cierres_marketing + m.cierres_no_pauta == m.total_cierres_general == 4
+
+
+def test_eficiencia_global_formula():
+    """% Eficiencia Global = (Cierres Pauta+Organico+TikTok)*100 /
+    (Leads Asignados de Pauta+Organico+TikTok)."""
+    df = pd.DataFrame([
+        # Pauta, asignado, con cierre válido
+        {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": _ACTIVO,
+         "canal online": "paid social", "Canal offline": "clientify - facebook",
+         "Origen de la pauta": "facebook", "Motivo de no cierre": "cliente potencial",
+         "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Orgánico, asignado, sin cierre
+        {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": "en transito",
+         "canal online": None, "Canal offline": "orgánico",
+         "Origen de la pauta": None, "Motivo de no cierre": None,
+         "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+    ])
+    m = compute_all_metrics(df, df)
+    # asignados_pauta=1, asignados_organico=1, asignados_tiktok=0 -> denom=2
+    # cierres_marketing=1, cierres_organico=0, cierres_tiktok=0 -> numerador=1
+    assert m.eficiencia_global == pytest.approx(1 * 100 / 2)
+
+
+def test_eficiencia_pauta_y_global_ya_vienen_en_puntos_porcentuales():
+    """eficiencia_pauta/eficiencia_global se muestran con format_percent_raw (sin
+    re-multiplicar por 100) porque la fórmula del negocio ya incluye el *100."""
+    from src.utils.formatters import format_percent_raw
+    assert format_percent_raw(5.0) == "5.0%"
