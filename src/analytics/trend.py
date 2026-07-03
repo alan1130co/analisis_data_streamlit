@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 
 from src.analytics.filters import filter_by_month
-from src.analytics.metrics import is_qualified_mask, _is_active_estado
+from src.analytics.metrics import is_qualified_mask, _is_valid_closure_estado
 from src.config.settings import FOUNDING_DATE
 
 
@@ -45,7 +45,7 @@ def monthly_trend(
     Meses sin datos aparecen con ceros para no dejar huecos en el gráfico.
     """
     df_full = df[df["propietario"].isin(advisors)] if advisors and "propietario" in df.columns else df
-    active_full = df_full.apply(_is_active_estado, axis=1) if not df_full.empty else pd.Series(dtype=bool)
+    active_full = df_full.apply(_is_valid_closure_estado, axis=1) if not df_full.empty else pd.Series(dtype=bool)
 
     months: list[date] = []
     y, m = FOUNDING_DATE

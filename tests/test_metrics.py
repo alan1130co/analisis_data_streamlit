@@ -12,7 +12,7 @@ from src.analytics.metrics import (
     is_qualified_mask,
     is_asesor_comercial,
     is_cesar_augusto,
-    _is_active_estado,
+    _is_valid_closure_estado,
 )
 
 _ACTIVO = "activo"
@@ -153,8 +153,10 @@ def test_motivo_cliente_de_seguimiento_es_calificado():
     assert is_qualified_mask(row).all()
 
 
-def test_cierre_valido_requiere_estado_activo(sample_df):
-    """Un cierre solo cuenta si el lead está Activo (o Activo - mora)."""
+def test_cierre_valido_excluye_solo_estado_inactivo(sample_df):
+    """Regla de Cierre Válido (2026-07-03): un cierre cuenta salvo que 'estado'
+    sea EXACTAMENTE 'inactivo'. Ya no se exige una lista blanca (activo/activo
+    - mora): cualquier otro estado con fecha de cierre en el mes es válido."""
     m_activo = compute_all_metrics(sample_df, sample_df)
     assert m_activo.total_cierres == 1  # Sofia: pauta, activo, con cierre en abril
 
@@ -168,17 +170,27 @@ def test_cierre_valido_requiere_estado_activo(sample_df):
     m_mora = compute_all_metrics(df_mora, df_mora)
     assert m_mora.total_cierres == 1
 
+    # Estado intermedio (ni "activo" ni "inactivo"): con la regla vieja NO
+    # contaba (lista blanca); con la nueva SÍ cuenta (solo se excluye "inactivo").
+    df_intermedio = sample_df.copy()
+    df_intermedio.loc[0, "estado"] = "en proceso de firma"
+    m_intermedio = compute_all_metrics(df_intermedio, df_intermedio)
+    assert m_intermedio.total_cierres == 1
 
-def test_is_active_estado():
-    assert _is_active_estado({"estado": "Activo"}) is True
-    assert _is_active_estado({"estado": "activo - mora"}) is True
-    assert _is_active_estado({"estado": "inactivo"}) is False
-    assert _is_active_estado({"estado": "en transito"}) is False
-    assert _is_active_estado({"estado": None}) is False
+
+def test_is_valid_closure_estado():
+    assert _is_valid_closure_estado({"estado": "Activo"}) is True
+    assert _is_valid_closure_estado({"estado": "activo - mora"}) is True
+    assert _is_valid_closure_estado({"estado": "en transito"}) is True
+    assert _is_valid_closure_estado({"estado": None}) is True
+    assert _is_valid_closure_estado({"estado": "inactivo"}) is False
+    assert _is_valid_closure_estado({"estado": "Inactivo"}) is False
+    assert _is_valid_closure_estado({"estado": "  INACTIVO  "}) is False
 
 
-def test_total_cierres_solo_pauta_y_organico():
-    """total_cierres = cierres válidos de Pauta + Orgánico; excluye TikTok y Referidos."""
+def test_total_cierres_es_pauta_incluyendo_tiktok_y_organico():
+    """2026-07-03e: total_cierres = cierres_marketing, que ahora INCLUYE
+    TikTok y Orgánico (son Pauta); excluye solo Referido puro."""
     _base = {
         "propietario": "Sofia", "Motivo de no cierre": None, "Cantidad de cierres": 1.0,
         "estado": _ACTIVO, "Fecha de segundo cierre": pd.NaT,
@@ -199,8 +211,8 @@ def test_total_cierres_solo_pauta_y_organico():
          "Origen de la pauta": None, "Fecha de cierre": datetime(2026, 4, 8)},
     ])
     m = compute_all_metrics(df, df)
-    assert m.total_cierres == 2  # solo pauta + orgánico
-    assert m.total_cierres_general == 4  # las 4 fuentes
+    assert m.total_cierres == 3  # facebook + orgánico + tiktok (los 3 son Pauta ahora)
+    assert m.total_cierres_general == 4  # Pauta(3) + Referido puro(1)
 
 
 def test_cierres_marketing_suma_las_4_columnas():
@@ -269,10 +281,12 @@ def test_empty_df():
 # is_marketing / is_organico / is_tiktok
 # ---------------------------------------------------------------------------
 
-def test_is_marketing_referido_de_redes_es_referido_no_pauta():
-    """Fix de fuga de referidos: 'Referido cliente activo - Redes' es Referido, no Pauta."""
+def test_is_marketing_referido_de_redes_es_pauta():
+    """Regla 2026-07-03e (reemplaza el fix de fuga anterior): 'Referido cliente
+    activo - Redes' es Pauta, no Referido — 'redes' en el nombre manda, aunque
+    diga 'referido'. El check de 'redes' se evalúa ANTES que el de referido puro."""
     row = pd.Series({"Canal offline": "Referido cliente activo - Redes", "canal online": "inbox"})
-    assert is_marketing(row) is False
+    assert is_marketing(row) is True
 
 
 def test_is_marketing_canal_offline_vacio_es_referido():
@@ -308,11 +322,46 @@ def test_is_marketing_canales_marketing_siguen_siendo_pauta():
         assert is_marketing(caso) is True, f"Falló: {caso}"
 
 
-def test_is_marketing_excluye_tiktok_y_organico():
-    """TikTok y Orgánico ya NO son Pauta: son categorías propias."""
-    assert is_marketing({"Canal offline": "Tiktok"}) is False
-    assert is_marketing({"Canal offline": "Orgánico"}) is False
-    assert is_marketing({"Canal offline": "organico"}) is False
+def test_is_marketing_incluye_tiktok_y_organico():
+    """Regla 2026-07-03e: TikTok y Orgánico ahora SÍ son Pauta."""
+    assert is_marketing({"Canal offline": "Tiktok"}) is True
+    assert is_marketing({"Canal offline": "Orgánico"}) is True
+    assert is_marketing({"Canal offline": "organico"}) is True
+
+
+def test_is_marketing_redes_sociales_explicitas_son_pauta():
+    """'Cualquier canal de redes sociales' (Facebook/Instagram/WhatsApp/
+    Messenger/etc.) es Pauta, incluso sin el prefijo 'Clientify - '."""
+    assert is_marketing({"Canal offline": "Facebook"}) is True
+    assert is_marketing({"Canal offline": "Instagram"}) is True
+    assert is_marketing({"Canal offline": "WhatsApp"}) is True
+    assert is_marketing({"Canal offline": "Messenger"}) is True
+
+
+def test_is_marketing_check_de_redes_antes_que_referido():
+    """El check de 'redes' se evalúa ANTES que el de 'referido puro' — por
+    eso cualquier variante de 'referido...redes' es Pauta."""
+    casos_pauta = [
+        {"Canal offline": "Referido cliente activo - Redes"},
+        {"Canal offline": "Referido de redes"},
+        {"Canal offline": "Redes - referido"},
+    ]
+    for caso in casos_pauta:
+        assert is_marketing(caso) is True, f"Falló (debería ser Pauta): {caso}"
+
+
+def test_is_marketing_cualquier_variante_de_llamada_es_pauta():
+    """2026-07-03f: cualquier Canal offline que contenga 'llamada' (Llamada
+    Entrante, Llamada Telefónica, Llamada Saliente, etc.) es Pauta, por
+    substring — no solo la igualdad exacta contra 'llamada entrante'."""
+    casos_pauta = [
+        {"Canal offline": "Llamada Entrante"},
+        {"Canal offline": "Llamada Telefónica"},
+        {"Canal offline": "Llamada Saliente"},
+        {"Canal offline": "llamada"},
+    ]
+    for caso in casos_pauta:
+        assert is_marketing(caso) is True, f"Falló (debería ser Pauta): {caso}"
 
 
 def test_is_marketing_origen_pauta_prioritario_sobre_inbox_referral():
@@ -335,10 +384,20 @@ def test_is_tiktok():
 def test_is_organico():
     assert is_organico({"Canal offline": "Orgánico", "Origen de la pauta": None}) is True
     assert is_organico({"Canal offline": "organico", "Origen de la pauta": None}) is True
-    assert is_organico({"Canal offline": "Facebook", "Origen de la pauta": None}) is True
-    assert is_organico({"Canal offline": "Messenger", "Origen de la pauta": None}) is True
     # TikTok tiene prioridad sobre Orgánico
     assert is_organico({"Canal offline": "Tiktok", "Origen de la pauta": None}) is False
+
+
+def test_is_organico_no_incluye_facebook_messenger_instagram_para_poblacion_general():
+    """Fix de la bolsa Orgánico/TikTok (2026-07-03): 'Facebook'/'Messenger'/
+    'Instagram' en Canal offline YA NO cuentan como Orgánico para cualquier
+    asesor — antes cualquier lead con esos canales se sumaba de más a la
+    bolsa. Messenger/Instagram solo cuentan si además es César Augusto
+    (ver is_cesar_comentario); Facebook cae en Pauta/Referido según el resto
+    de columnas, no en Orgánico."""
+    assert is_organico({"Canal offline": "Facebook", "Origen de la pauta": None}) is False
+    assert is_organico({"Canal offline": "Messenger", "Origen de la pauta": None}) is False
+    assert is_organico({"Canal offline": "Instagram", "Origen de la pauta": None}) is False
 
 
 def test_is_cesar_augusto():
@@ -363,6 +422,9 @@ def _lead(canal_offline, propietario, estado="en transito", creado=datetime(2026
 
 
 def test_leads_pauta_organico_tiktok_generales():
+    """leads_pauta ahora incluye TikTok/Orgánico (regla 2026-07-03e); las
+    tarjetas leads_organico/leads_tiktok (independientes de is_marketing)
+    no cambian."""
     df = pd.DataFrame([
         _lead("Clientify - Facebook", "sofia"),
         _lead("Orgánico", "ana"),
@@ -370,27 +432,26 @@ def test_leads_pauta_organico_tiktok_generales():
         _lead("Referido externo", "juan"),
     ])
     m = compute_all_metrics(df, df)
-    assert m.leads_pauta == 1
+    assert m.leads_pauta == 3  # facebook + orgánico + tiktok
     assert m.leads_organico == 1
     assert m.leads_tiktok == 1
 
 
-def test_cesar_augusto_messenger_instagram_suman_a_organico_tiktok_sin_importar_estado():
-    """Suma 1 (César + Messenger/Instagram): cuenta siempre, sin importar el
-    estado — 'representan comentarios de usuarios'. No se divide entre las
-    tarjetas individuales de Orgánico/TikTok, solo en el total combinado."""
+def test_cesar_augusto_cuenta_completo_sin_importar_canal_ni_estado():
+    """Regla 2026-07-03h: Suma 1 = TODO lead de César Augusto, sin importar
+    canal/origen de contacto ni estado. Reemplaza la regla anterior
+    (solo Messenger/Instagram) que dejaba afuera leads reales de César con
+    otros canales (p.ej. 'orgánico', 'inbox_whatsapp', vacío)."""
     df = pd.DataFrame([
-        # César, Messenger, ACTIVO → sí cuenta (no hay filtro de estado)
         _lead("Messenger", "Cesar Augusto Perez Tafur", estado=_ACTIVO),
-        # César, Instagram, en tránsito → sí cuenta
         _lead("Instagram", "Cesar Augusto Perez Tafur", estado="en transito"),
-        # César, Facebook → NO cuenta (Suma 1 es solo Messenger/Instagram)
+        # Antes NO contaban (fuera de Messenger/Instagram) — ahora SÍ cuentan.
         _lead("Clientify - Facebook", "Cesar Augusto Perez Tafur", estado="en transito"),
-        # César, TikTok literal → NO cuenta (fuera de Suma 1 y excluido de Suma 2)
         _lead("Tiktok", "Cesar Augusto Perez Tafur", estado="en transito"),
+        _lead(None, "Cesar Augusto Perez Tafur", estado="en transito"),
     ])
     m = compute_all_metrics(df, df)
-    assert m.leads_organico_tiktok == 2  # Messenger + Instagram, nada más
+    assert m.leads_organico_tiktok == 5  # los 5 leads de César, sin excepción
     assert m.leads_organico == 0  # Suma 1 no se reparte a la tarjeta individual
     assert m.leads_tiktok == 0
 
@@ -401,7 +462,7 @@ def test_leads_organico_tiktok_generales_no_incluyen_a_cesar():
     df = pd.DataFrame([
         _lead("Orgánico", "sofia"),
         _lead("Tiktok", "ana"),
-        _lead("Instagram", "Cesar Augusto Perez Tafur"),  # Suma 1, no Suma 2
+        _lead("Clientify - Facebook", "Cesar Augusto Perez Tafur"),  # Suma 1, no Suma 2
     ])
     m = compute_all_metrics(df, df)
     assert m.leads_organico == 1       # sofia
@@ -422,8 +483,9 @@ def test_leads_pauta_no_afectado_por_filtro_cesar():
 # Eficiencias
 # ---------------------------------------------------------------------------
 
-def test_eficiencia_pauta_calculo_correcto():
-    """100 leads pauta asignados a Asesor Comercial, 5 con cierre válido en el mes."""
+def test_eficiencia_real_calculo_correcto():
+    """100 leads pauta asignados a Asesor Comercial, 5 con cierre válido en el mes.
+    Todos calificados (motivo vacío) → eficiencia_real = 5*100/100 = 5.0%."""
     leads = []
     for i in range(95):
         leads.append({
@@ -446,7 +508,8 @@ def test_eficiencia_pauta_calculo_correcto():
     assert m.leads_pauta == 100
     assert m.asignados_pauta == 100
     assert m.cierres_marketing == 5
-    assert m.eficiencia_pauta == pytest.approx(5.0)  # (5*100)/100
+    assert m.calificados == 100
+    assert m.eficiencia_real == pytest.approx(5.0)  # (5*100)/100
 
 
 def test_eficiencia_bruta_formula():
@@ -466,30 +529,62 @@ def test_eficiencia_bruta_formula():
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
     m = compute_all_metrics(df, df)
-    # asignados_pauta=1, leads_organico=1, leads_tiktok=0, calificados=2, no_calificados=0
-    # denom = 1+1+0+2+0 = 4; numerador = total_cierres = 1
-    assert m.eficiencia_bruta == pytest.approx(1 * 100 / 4)
+    # 2026-07-03e: asignados_pauta ahora es 2 (facebook + orgánico, ambos
+    # Pauta), leads_organico=1, leads_tiktok=0, calificados=2, no_calificados=0
+    # denom = 2+1+0+2+0 = 5; numerador = total_cierres = 1 (solo sofia cerró)
+    assert m.eficiencia_bruta == pytest.approx(1 * 100 / 5)
 
 
 # ---------------------------------------------------------------------------
 # Tarjetas KPI
 # ---------------------------------------------------------------------------
 
-def test_get_kpi_definitions_todos_devuelve_8_tarjetas():
-    """Layout original de 8 tarjetas (revertida la grilla de 10)."""
+def test_get_kpi_definitions_todos_devuelve_10_tarjetas():
+    """Layout de 10 tarjetas (2026-07-03c): Leads Pauta fue reemplazada por
+    las 3 tarjetas de cierres desglosados (Pauta/Referidos/Adicionales) + Total."""
     from src.analytics.kpis import get_kpi_definitions
-    assert len(get_kpi_definitions("Todos")) == 8
+    assert len(get_kpi_definitions("Todos")) == 10
 
 
-def test_kpi_todos_incluye_tarjetas_en_orden_original_con_organico_tiktok_unificado():
-    """Orden: Creados, Leads Pauta, Leads Organico+TikTok (unificado), Calificados,
-    No calificados, Total Cierres, % Eficiencia Pauta, % Eficiencia Global."""
+def test_kpi_todos_incluye_tarjetas_en_orden_2026_07_03c():
+    """Orden (2026-07-03c, eficiencias renombradas 2026-07-03i): Creados,
+    Leads Organico+TikTok (unificado), Calificados, No calificados,
+    Cierres Pauta (M), Cierres Referidos (R), Cierres Adicionales,
+    Total Cierres, % Eficiencia Real, % Eficiencia Global.
+
+    "Leads Pauta" fue reemplazada por las 3 tarjetas de cierres desglosados;
+    "Total Cierres" ahora usa total_cierres_estricto (suma explícita de las
+    3 tarjetas anteriores), no total_cierres_general ni el total_cierres legado.
+    "% Eficiencia Pauta" se renombró a "% Eficiencia Real" (campo eficiencia_real)."""
     from src.analytics.kpis import KPI_DEFINITIONS_TODOS
     keys = [k.key for k in KPI_DEFINITIONS_TODOS]
     assert keys == [
-        "creados", "leads_pauta", "leads_organico_tiktok",
-        "calificados", "no_calificados", "total_cierres",
-        "eficiencia_pauta", "eficiencia_global",
+        "creados", "leads_organico_tiktok",
+        "calificados", "no_calificados",
+        "cierres_pauta_primer", "cierres_referido_primer", "cierres_adicionales",
+        "total_cierres_estricto",
+        "eficiencia_real", "eficiencia_global",
+    ]
+
+
+def test_kpi_todos_no_incluye_lideres_pauta_ni_leads_pauta():
+    """Ni 'Líderes Pauta' (nunca existió) ni 'Leads Pauta' (reemplazada) deben
+    aparecer en el layout de 10 tarjetas."""
+    from src.analytics.kpis import KPI_DEFINITIONS_TODOS
+    labels = [k.label for k in KPI_DEFINITIONS_TODOS]
+    assert "Líderes Pauta" not in labels
+    assert "Leads Pauta" not in labels
+    assert len(KPI_DEFINITIONS_TODOS) == 10
+
+
+def test_kpi_todos_tarjetas_de_cierre_van_consecutivas_antes_del_total():
+    """Pauta(M) -> Referidos(R) -> Adicionales -> Total Cierres, en ese orden y consecutivas."""
+    from src.analytics.kpis import KPI_DEFINITIONS_TODOS
+    keys = [k.key for k in KPI_DEFINITIONS_TODOS]
+    i = keys.index("cierres_pauta_primer")
+    assert keys[i:i + 4] == [
+        "cierres_pauta_primer", "cierres_referido_primer",
+        "cierres_adicionales", "total_cierres_estricto",
     ]
 
 
@@ -519,10 +614,11 @@ def test_asignados_organico_y_tiktok_solo_cuentan_asesores_comerciales():
     assert m.asignados_tiktok == 0
 
 
-def test_cierres_no_pauta_agrupa_organico_tiktok_y_referidos_sin_fuga():
-    """cierres_no_pauta ('Referidos (R)' en la tarjeta) debe sumar Organico + TikTok +
-    Referidos estrictos, de forma que Cierres Pauta (M) + Cierres Referidos (R) sea
-    SIEMPRE igual a total_cierres_general (ninguna categoría se pierde)."""
+def test_cierres_no_pauta_es_solo_referido_puro_sin_fuga():
+    """2026-07-03e: cierres_no_pauta = cierres_referidos (Orgánico/TikTok ya
+    son Pauta, no 'no pauta'). La identidad Cierres Pauta(M) + Cierres
+    Referidos(R) == total_cierres_general debe seguir cumpliéndose siempre
+    (partición binaria completa, sin fuga ni doble conteo)."""
     _base = {
         "propietario": "Sofia", "Motivo de no cierre": None, "Cantidad de cierres": 1.0,
         "estado": _ACTIVO, "Fecha de segundo cierre": pd.NaT,
@@ -543,66 +639,178 @@ def test_cierres_no_pauta_agrupa_organico_tiktok_y_referidos_sin_fuga():
          "Origen de la pauta": None, "Fecha de cierre": datetime(2026, 4, 8)},
     ])
     m = compute_all_metrics(df, df)
-    assert m.cierres_no_pauta == 3  # organico + tiktok + referido
+    assert m.cierres_marketing == 3  # facebook + orgánico + tiktok (los 3 son Pauta)
+    assert m.cierres_no_pauta == 1   # solo el referido puro
     assert m.cierres_marketing + m.cierres_no_pauta == m.total_cierres_general == 4
 
 
-def test_eficiencia_pauta_usa_total_asignados_no_solo_asignados_pauta():
-    """% Eficiencia de Pauta = (Cierres por Pauta * 100) / Total Asignado a los
-    Asesores (universo completo, no solo el subconjunto de pauta) — para que
-    no dé un porcentaje inflado cuando hay leads de otros canales."""
+def test_eficiencia_real_usa_calificados_del_mes_no_calificados_pauta():
+    """2026-07-03i: % Eficiencia Real (antes '% Eficiencia Pauta') =
+    (Cierres de Pauta * 100) / Calificados del MES TOTAL — ya no
+    calificados_pauta ni asignados."""
     df = pd.DataFrame([
-        # Pauta, asignada, 1 cierre válido
+        # Pauta, calificada (motivo vacío), con cierre válido
         {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": _ACTIVO,
          "canal online": "paid social", "Canal offline": "clientify - facebook",
-         "Origen de la pauta": "facebook", "Motivo de no cierre": "cliente potencial",
+         "Origen de la pauta": "facebook", "Motivo de no cierre": None,
          "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5),
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Referido, asignado (NO es pauta) — antes no entraba en el denominador
+        # Pauta, NO calificada (motivo explícito UNQUALIFIED), sin cierre
         {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": "en transito",
+         "canal online": "paid social", "Canal offline": "clientify - instagram",
+         "Origen de la pauta": "instagram", "Motivo de no cierre": "no se logró contactar",
+         "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Referido, calificada (motivo vacío) — infla calificados TOTAL sin ser Pauta
+        {"creado": datetime(2026, 4, 3), "propietario": "carlos", "estado": "en transito",
          "canal online": "inbox-referral", "Canal offline": "referido - amigo",
          "Origen de la pauta": None, "Motivo de no cierre": None,
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
     m = compute_all_metrics(df, df)
-    assert m.asignados == 2
-    assert m.asignados_pauta == 1
+    assert m.calificados_pauta == 1
+    assert m.calificados == 2  # sofia + carlos (ana no calificó)
     assert m.cierres_marketing == 1
-    # Con la fórmula vieja (asignados_pauta=1) daría 100%; con la nueva (asignados=2) da 50%.
-    assert m.eficiencia_pauta == pytest.approx(1 * 100 / 2)
+    # Con calificados_pauta (fórmula vieja) daría 100%; con calificados TOTAL (nueva) da 50%.
+    assert m.eficiencia_real == pytest.approx(1 * 100 / 2)
 
 
-def test_eficiencia_global_usa_total_cierres_general_y_asignados_totales():
-    """% Eficiencia Global = (Total Cierres de TODA la operación * 100) /
-    Total Asignado a los Asesores — debe reflejar también los cierres de
-    Referidos (antes la fórmula los ignoraba por completo en el numerador,
-    dando 0% pese a haber cierres reales)."""
+def test_eficiencia_global_usa_creados_no_calificados():
+    """2026-07-03i: % Eficiencia Global = (Cierres de Pauta * 100) / Leads
+    CREADOS del mes — ya no total de cierres/calificados."""
     df = pd.DataFrame([
-        # Pauta, asignada, SIN cierre
-        {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": "en transito",
+        # Pauta, calificada, con cierre válido
+        {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": _ACTIVO,
          "canal online": "paid social", "Canal offline": "clientify - facebook",
          "Origen de la pauta": "facebook", "Motivo de no cierre": None,
+         "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Pauta, NO calificada, sin cierre — infla creados sin ser calificado
+        {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": "en transito",
+         "canal online": "paid social", "Canal offline": "clientify - instagram",
+         "Origen de la pauta": "instagram", "Motivo de no cierre": "no se logró contactar",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Referido, asignado, CON cierre válido
-        {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": _ACTIVO,
+        # Referido, calificada, sin cierre
+        {"creado": datetime(2026, 4, 3), "propietario": "carlos", "estado": "en transito",
          "canal online": "inbox-referral", "Canal offline": "referido - amigo",
          "Origen de la pauta": None, "Motivo de no cierre": None,
-         "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 10),
+         "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
     m = compute_all_metrics(df, df)
-    assert m.asignados == 2
-    assert m.total_cierres_general == 1  # el cierre de Referidos
-    assert m.total_cierres == 0          # el KPI legado (solo pauta+organico) lo ignora
-    # Con la fórmula vieja (numerador solo pauta+organico+tiktok=0) daría 0% pese
-    # al cierre real de Referidos; la nueva sí lo refleja: 1*100/2 = 50%.
-    assert m.eficiencia_global == pytest.approx(1 * 100 / 2)
+    assert m.creados == 3
+    assert m.calificados == 2
+    assert m.cierres_marketing == 1
+    # Con calificados (fórmula anterior) daría 50%; con creados (nueva) da 33.3%.
+    assert m.eficiencia_global == pytest.approx(1 * 100 / 3)
 
 
-def test_eficiencia_pauta_y_global_ya_vienen_en_puntos_porcentuales():
-    """eficiencia_pauta/eficiencia_global se muestran con format_percent_raw (sin
+def test_eficiencia_real_y_global_ya_vienen_en_puntos_porcentuales():
+    """eficiencia_real/eficiencia_global se muestran con format_percent_raw (sin
     re-multiplicar por 100) porque la fórmula del negocio ya incluye el *100."""
     from src.utils.formatters import format_percent_raw
     assert format_percent_raw(5.0) == "5.0%"
+
+
+# ---------------------------------------------------------------------------
+# Bolsa "Leads Orgánicos y TikTok" — regla César corregida (2026-07-03)
+# ---------------------------------------------------------------------------
+
+def test_is_cesar_augusto_es_insensible_a_tildes():
+    """'César' (con tilde) y 'Cesar' (sin tilde) deben matchear igual: el
+    Excel puede traer cualquiera de las dos formas según quién lo tipeó."""
+    assert is_cesar_augusto({"propietario": "César Augusto Pérez Tafur"}) is True
+    assert is_cesar_augusto({"propietario": "Cesar Augusto Perez Tafur"}) is True
+
+
+# ---------------------------------------------------------------------------
+# Tarjetas de cierre desglosadas (2026-07-03c): Pauta(M) / Referidos(R) /
+# Adicionales / Total Cierres estricto
+# ---------------------------------------------------------------------------
+
+def test_total_cierres_estricto_es_la_suma_de_las_3_tarjetas_de_cierre():
+    """Por construcción: Total Cierres = Cierres Pauta(M) + Cierres Referidos(R)
+    + Cierres Adicionales. Nunca debe calcularse por un camino separado."""
+    _base = {
+        "Motivo de no cierre": None, "Cantidad de cierres": 2.0, "estado": _ACTIVO,
+    }
+    df = pd.DataFrame([
+        # Pauta: 1er cierre en abril + 2do cierre (re-cierre) también en abril
+        {**_base, "creado": datetime(2026, 4, 1), "propietario": "sofia",
+         "canal online": "paid social", "Canal offline": "clientify - facebook",
+         "Origen de la pauta": "facebook",
+         "Fecha de cierre": datetime(2026, 4, 5),
+         "Fecha de segundo cierre": datetime(2026, 4, 20),
+         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Referido: 1er cierre en abril
+        {**_base, "creado": datetime(2026, 4, 2), "propietario": "ana",
+         "canal online": "inbox-referral", "Canal offline": "referido - amigo",
+         "Origen de la pauta": None, "Cantidad de cierres": 1.0,
+         "Fecha de cierre": datetime(2026, 4, 10), "Fecha de segundo cierre": pd.NaT,
+         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Orgánico: 1er cierre en abril (cae en el bucket "Pauta (M)" porque
+        # Orgánico ahora es Pauta — regla 2026-07-03e).
+        {**_base, "creado": datetime(2026, 4, 3), "propietario": "carlos",
+         "canal online": "inbox", "Canal offline": "orgánico",
+         "Origen de la pauta": None, "Cantidad de cierres": 1.0,
+         "Fecha de cierre": datetime(2026, 4, 12), "Fecha de segundo cierre": pd.NaT,
+         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.cierres_pauta_primer == 2     # sofia (facebook) + carlos (orgánico)
+    assert m.cierres_referido_primer == 1  # ana (referido puro)
+    assert m.cierres_adicionales == 1      # 2do cierre de sofia en abril
+    assert m.total_cierres_estricto == 4
+    assert m.total_cierres_estricto == (
+        m.cierres_pauta_primer + m.cierres_referido_primer + m.cierres_adicionales
+    )
+    # Debe coincidir con total_cierres_general (mismo universo de cierres
+    # válidos, solo particionado distinto: por canal vs. por orden de cierre).
+    assert m.total_cierres_estricto == m.total_cierres_general
+
+
+def test_total_cierres_estricto_excluye_estado_inactivo():
+    """La Regla de Cierre Válido (estado != 'inactivo') también aplica a la
+    tarjeta 'Total Cierres' estricta, vía cierres_pauta_primer/referido_primer/adicionales."""
+    _base = {
+        "propietario": "sofia", "Motivo de no cierre": None, "Cantidad de cierres": 1.0,
+        "canal online": "paid social", "Canal offline": "clientify - facebook",
+        "Origen de la pauta": "facebook",
+        "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT,
+        "Fecha de 4to cierre": pd.NaT,
+    }
+    df = pd.DataFrame([
+        {**_base, "creado": datetime(2026, 4, 1), "estado": "inactivo",
+         "Fecha de cierre": datetime(2026, 4, 5)},
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.cierres_pauta_primer == 0
+    assert m.total_cierres_estricto == 0
+
+
+def test_desglose_cierres_por_etapa_respeta_regla_estado_inactivo():
+    """Los 4 números del expander 'Desglose de cierres por etapa'
+    (cierres_1..cierres_4) deben excluir solo estado == 'inactivo', igual
+    que el resto de cierres — no una regla de validez distinta."""
+    _base = {
+        "propietario": "sofia", "Motivo de no cierre": None, "Cantidad de cierres": 4.0,
+        "canal online": "paid social", "Canal offline": "clientify - facebook",
+        "Origen de la pauta": "facebook",
+    }
+    df = pd.DataFrame([
+        # Estado intermedio (ni activo ni inactivo): las 4 columnas deben contar.
+        {**_base, "creado": datetime(2026, 4, 1), "estado": "en proceso de firma",
+         "Fecha de cierre": datetime(2026, 4, 1),
+         "Fecha de segundo cierre": datetime(2026, 4, 2),
+         "Fecha de tercer cierre": datetime(2026, 4, 3),
+         "Fecha de 4to cierre": datetime(2026, 4, 4)},
+    ])
+    m = compute_all_metrics(df, df)
+    assert (m.cierres_1, m.cierres_2, m.cierres_3, m.cierres_4) == (1, 1, 1, 1)
+
+    df_inactivo = df.copy()
+    df_inactivo.loc[0, "estado"] = "inactivo"
+    m_inactivo = compute_all_metrics(df_inactivo, df_inactivo)
+    assert (m_inactivo.cierres_1, m_inactivo.cierres_2, m_inactivo.cierres_3, m_inactivo.cierres_4) == (0, 0, 0, 0)

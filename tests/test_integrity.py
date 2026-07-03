@@ -267,6 +267,13 @@ def test_april_2026_numeros_reales_verificados_manualmente():
 
     Números recalculados con clientify_contactos_03_06_2026.xls. Si se carga
     otro archivo, actualizar estos valores.
+
+    ATENCIÓN (2026-07-03): estos números fueron calculados con la Regla de
+    Cierre Válido VIEJA (lista blanca: solo "activo"/"activo - mora"). La
+    regla cambió a lista negra (todo cuenta salvo "estado" == "inactivo"),
+    así que estos totales de cierres casi seguro subestiman la realidad y
+    deben recalcularse contra el archivo real (no se pudo hacer en esta
+    sesión porque data/raw/ no tiene el .xls real disponible).
     """
     raw_dir = Path("data/raw")
     files = sorted(raw_dir.glob("*.xls*"))
@@ -327,9 +334,142 @@ def test_april_2026_creados_y_calificados_marketing():
     assert metrics.asignados_pauta == 90
 
 
+def test_junio_2026_total_cierres_general_regla_estado_inactivo():
+    """Validación contra base real de junio 2026 (clientify_contactos_03_07_2026.xls,
+    verificado 2026-07-03e), con dos reglas de negocio activas:
+
+    - Regla de Cierre Válido: un cierre cuenta salvo que 'estado' sea
+      EXACTAMENTE 'inactivo'.
+    - Regla de Pauta ampliada: TikTok, Orgánico, llamada telefónica,
+      cualquier canal de redes sociales y cualquier "Referido...redes"
+      cuentan como Pauta; solo el Referido puro (sin "redes" en el nombre)
+      es Referido.
+
+    Cifras verificadas: 43 cierres válidos totales (39 del 1er cierre + 4
+    adicionales/re-cierres), de los cuales 22 son Pauta y 17 son Referido
+    puro (22+17=39, coincide con el 1er cierre). NOTA: el desglose crudo por
+    canal da Pauta=23, pero 1 de esos 23 tiene estado='inactivo' (Dustin
+    Smith Vasquez Cusirramos, formulario de facebook, cerrado 2026-06-10) y
+    se excluye correctamente por la Regla de Cierre Válido, dando 22 netos.
+    Este número (43) reemplaza el "44" estimado a mano en la sesión anterior
+    (2026-07-03c) — ese conteo era manual y con la definición de Pauta vieja
+    (sin TikTok/Orgánico); si se carga otro archivo, recalcular con el script
+    RE-VERIFICADO 2026-07-03f: el usuario sospechó que "Llamada Entrante" y
+    "Referido...Redes" estaban mal clasificados (esperaba Pauta=23). Se
+    confirmó fila por fila que ambos YA clasifican correctamente como Pauta
+    — el único gap sigue siendo la fila de Dustin Smith (estado=inactivo)
+    descrita arriba, no un bug de is_marketing. Se generalizó igual el
+    check de "llamada" a substring (antes solo igualdad exacta contra
+    "llamada entrante") como mejora defensiva; no cambia el número de junio.
+
+    RE-VERIFICADO 2026-07-03g: eficiencia_pauta/eficiencia_global pasaron a
+    dividir por calificados_pauta/calificados en vez de asignados (antes
+    diluían el % con leads no calificados). calificados=873 para junio, dando
+    eficiencia_global = 43*100/873 = 4.93% (antes 43*100/1090 = 3.94%).
+    Si se carga otro archivo, recalcular con el script de debug antes de
+    confiar en estos valores.
+    """
+    raw_dir = Path("data/raw")
+    files = sorted(raw_dir.glob("*.xls*"))
+    if not files:
+        pytest.skip("No hay archivo en data/raw/ para test de integridad")
+
+    df = ExcelContactsLoader(str(files[-1])).load()
+    df_junio = filter_by_month(df, date(2026, 6, 1))
+    metrics = compute_all_metrics(df_junio, df)
+
+    assert metrics.total_cierres_general == 43, (
+        f"total_cierres_general={metrics.total_cierres_general}, esperado 43"
+    )
+    assert metrics.cierres_pauta_primer == 22, (
+        f"cierres_pauta_primer={metrics.cierres_pauta_primer}, esperado 22 "
+        "(23 en canal crudo, menos 1 con estado 'inactivo')"
+    )
+    assert metrics.cierres_referido_primer == 17, (
+        f"cierres_referido_primer={metrics.cierres_referido_primer}, esperado 17"
+    )
+    assert metrics.cierres_adicionales == 4, (
+        f"cierres_adicionales={metrics.cierres_adicionales}, esperado 4"
+    )
+    assert metrics.total_cierres_estricto == 43
+
+    # La tarjeta "Total Cierres" del layout de 10 tarjetas debe reflejar el
+    # mismo número (apunta a total_cierres_estricto: Pauta+Referidos+Adicionales).
+    from src.analytics.kpis import KPI_DEFINITIONS_TODOS
+    total_cierres_key = next(k.key for k in KPI_DEFINITIONS_TODOS if k.label == "Total Cierres")
+    assert getattr(metrics, total_cierres_key) == 43
+
+    # 2026-07-03i: % Eficiencia Real (antes "% Eficiencia Pauta") =
+    # (Cierres de Pauta * 100) / Calificados del mes (TOTAL, no calificados_pauta).
+    assert metrics.calificados == 873, f"calificados={metrics.calificados}, esperado 873"
+    assert metrics.eficiencia_real == pytest.approx(22 * 100 / 873, abs=0.01), (
+        f"eficiencia_real={metrics.eficiencia_real}, esperado ~2.52"
+    )
+    # % Eficiencia Global = (Cierres de Pauta * 100) / Creados del mes.
+    assert metrics.creados == 1090, f"creados={metrics.creados}, esperado 1090"
+    assert metrics.eficiencia_global == pytest.approx(22 * 100 / 1090, abs=0.01), (
+        f"eficiencia_global={metrics.eficiencia_global}, esperado ~2.02"
+    )
+
+
+def test_junio_2026_leads_organico_tiktok_414():
+    """2026-07-03h: 'Leads Orgánicos y TikTok' = TODO lead de César Augusto
+    (sin filtrar por canal, regla ampliada) + TikTok/Orgánico de canal para
+    el resto de asesores. Verificado contra clientify_contactos_03_07_2026.xls:
+    352 (César, cualquier canal) + 57 (TikTok, no-César) + 5 (Orgánico,
+    no-César) = 414. Reemplaza el "412" de la regla anterior (César
+    limitado a Messenger/Instagram, que dejaba 2 leads reales de César
+    afuera: uno con Canal offline='orgánico' y otro con origen
+    contacto='inbox_whatsapp')."""
+    raw_dir = Path("data/raw")
+    files = sorted(raw_dir.glob("*.xls*"))
+    if not files:
+        pytest.skip("No hay archivo en data/raw/ para test de integridad")
+
+    df = ExcelContactsLoader(str(files[-1])).load()
+    df_junio = filter_by_month(df, date(2026, 6, 1))
+    metrics = compute_all_metrics(df_junio, df)
+
+    assert metrics.leads_organico == 5, f"leads_organico={metrics.leads_organico}, esperado 5"
+    assert metrics.leads_tiktok == 57, f"leads_tiktok={metrics.leads_tiktok}, esperado 57"
+    assert metrics.leads_organico_tiktok == 414, (
+        f"leads_organico_tiktok={metrics.leads_organico_tiktok}, esperado 414"
+    )
+
+
+def test_junio_2026_desglose_cierres_por_etapa_1er_39_adicionales_4():
+    """Desglose de cierres por etapa (2026-07-03g): cierres_1..4 ya cuentan
+    correctamente los contratos válidos (estado != 'inactivo') por columna
+    de fecha — verificado fila por fila contra el Excel real. El "2/1/0/0"
+    que reportó el usuario correspondía a Julio 2026 (mes que arrancaba,
+    casi sin datos), NO a Junio: el selector de período en app.py
+    (st.selectbox(..., index=0)) toma por defecto el mes más reciente CON
+    LEADS CREADOS, que en el momento del reporte era Julio. No es un bug de
+    esta función — compute_all_metrics ya daba los números correctos para
+    Junio antes y después de esta sesión."""
+    raw_dir = Path("data/raw")
+    files = sorted(raw_dir.glob("*.xls*"))
+    if not files:
+        pytest.skip("No hay archivo en data/raw/ para test de integridad")
+
+    df = ExcelContactsLoader(str(files[-1])).load()
+    df_junio = filter_by_month(df, date(2026, 6, 1))
+    metrics = compute_all_metrics(df_junio, df)
+
+    assert metrics.cierres_1 == 39, f"cierres_1={metrics.cierres_1}, esperado 39"
+    assert metrics.cierres_2 == 4, f"cierres_2={metrics.cierres_2}, esperado 4"
+    assert metrics.cierres_3 == 0, f"cierres_3={metrics.cierres_3}, esperado 0"
+    assert metrics.cierres_4 == 0, f"cierres_4={metrics.cierres_4}, esperado 0"
+    assert metrics.cierres_adicionales == 4
+
+
 def test_may_2026_numeros_reales_verificados():
     """Validación contra base real de mayo 2026, tras las correcciones de negocio
-    (Activo, fuga de referidos, TikTok/Orgánico separados, Origen de pauta prioritario)."""
+    (Activo, fuga de referidos, TikTok/Orgánico separados, Origen de pauta prioritario).
+
+    ATENCIÓN (2026-07-03): calculados con la Regla de Cierre Válido VIEJA
+    (lista blanca). Ver nota en test_april_2026_numeros_reales_verificados_manualmente
+    — deben recalcularse contra el archivo real de mayo."""
     raw_dir = Path("data/raw")
     files = sorted(raw_dir.glob("*.xls*"))
     if not files:

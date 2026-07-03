@@ -4,6 +4,7 @@ Cálculo de KPIs para el dashboard.
 Todas las funciones reciben DataFrames y devuelven números o dicts.
 NO importan Streamlit ni nada de la UI.
 """
+import unicodedata
 from dataclasses import dataclass, asdict
 
 import pandas as pd
@@ -19,10 +20,12 @@ from src.config.settings import (
     ORGANICO_PAUTA_ORIGINS,
     TIKTOK_OFFLINE_CHANNELS,
     TIKTOK_PAUTA_ORIGINS,
-    CIERRE_VALID_ESTADOS,
+    PAUTA_REDES_TERM,
+    SOCIAL_CHANNEL_TERMS,
+    PAUTA_LLAMADA_TERM,
+    CIERRE_INVALID_ESTADOS,
     NON_COMMERCIAL_OWNERS,
     CESAR_AUGUSTO_PREFIX,
-    CESAR_COMENTARIOS_CHANNELS,
 )
 
 CLOSE_DATE_COLS = [
@@ -80,18 +83,23 @@ class Metrics:
     asignados_tiktok: int
     calificados: int
     no_calificados: int
-    total_cierres: int              # Solo Pauta + Orgánico, válidos, suma 1+2+3+4
-    eficiencia_pauta: float
+    total_cierres: int              # = cierres_marketing (Pauta, que ya incluye TikTok/Orgánico/redes-referidos)
+    eficiencia_real: float           # (Cierres de Pauta * 100) / Calificados del mes — "% Eficiencia Real"
     eficiencia_bruta: float
-    eficiencia_global: float         # (Cierres Pauta+Organico+TikTok)*100 / (Asignados Pauta+Organico+TikTok)
+    eficiencia_global: float         # (Cierres de Pauta * 100) / Creados del mes — "% Eficiencia Global"
+
+    total_cierres_estricto: int     # Suma ESTRICTA cierres_pauta_primer + cierres_referido_primer
+                                     # + cierres_adicionales — usado por la tarjeta "Total Cierres"
+                                     # para que SIEMPRE cuadre por construcción con las 3 tarjetas
+                                     # que lo componen (Pauta M / Referidos R / Adicionales).
 
     # --- Usados por comparación / gráficas / secciones de detalle ---
-    total_cierres_general: int      # Todas las fuentes, válidos, suma 1+2+3+4
-    cierres_marketing: int          # Pauta, válidos, suma 1+2+3+4
-    cierres_referidos: int          # Referidos estrictos (excluye Organico/TikTok), válidos, suma 1+2+3+4
-    cierres_organico: int           # Orgánico, válidos, suma 1+2+3+4
-    cierres_tiktok: int             # TikTok, válidos, suma 1+2+3+4
-    cierres_no_pauta: int           # Organico + TikTok + Referidos estrictos = "Referidos (R)" para tarjeta M+R
+    total_cierres_general: int      # cierres_marketing + cierres_referidos (partición binaria completa)
+    cierres_marketing: int          # Pauta (2026-07-03e: incluye TikTok/Orgánico/redes-referidos), válidos, suma 1+2+3+4
+    cierres_referidos: int          # Referido PURO (sin "redes" en el nombre), válidos, suma 1+2+3+4
+    cierres_organico: int           # Desglose informativo: Orgánico válidos (subconjunto de cierres_marketing)
+    cierres_tiktok: int             # Desglose informativo: TikTok válidos (subconjunto de cierres_marketing)
+    cierres_no_pauta: int           # = cierres_referidos (alias legado; TikTok/Orgánico ya no son "no pauta")
 
     # --- Campos legados (compatibilidad con secciones/tests existentes) ---
     no_calificados_pauta: int
@@ -136,14 +144,24 @@ def _safe_str(value) -> str:
     return str(value)
 
 
-def _is_active_estado(row) -> bool:
-    """True si el `estado` del lead está en CIERRE_VALID_ESTADOS.
+def _strip_accents(value: str) -> str:
+    """Quita tildes/diacríticos (César -> Cesar) para comparar de forma robusta
+    sin depender de cómo haya venido acentuado el texto en el Excel."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", value) if not unicodedata.combining(c)
+    )
 
-    Un cierre solo es válido si el lead está Activo (o Activo - mora):
-    si el proceso se marcó inactivo/sin interés, el cierre no debe contarse.
+
+def _is_valid_closure_estado(row) -> bool:
+    """True si el `estado` del lead NO es exactamente "inactivo".
+
+    Regla de Cierre Válido: un cierre cuenta salvo que el proceso quedó
+    "inactivo" (contrato caído / dinero devuelto). Cualquier otro estado
+    (activo, activo - mora, en trámite, etc.) es válido — no se exige una
+    lista blanca de estados "buenos", solo se excluye el explícitamente malo.
     """
     estado = _safe_str(row.get("estado", "")).strip().lower()
-    return estado in CIERRE_VALID_ESTADOS
+    return estado not in CIERRE_INVALID_ESTADOS
 
 
 def is_tiktok(row) -> bool:
@@ -167,21 +185,13 @@ def is_organico(row) -> bool:
 
 
 def is_cesar_augusto(row) -> bool:
-    """True si el propietario del lead es Cesar Augusto (único con ese nombre en el sistema)."""
-    propietario = _safe_str(row.get("propietario", "")).strip().lower()
-    return propietario.startswith(CESAR_AUGUSTO_PREFIX)
+    """True si el propietario del lead es Cesar Augusto (único con ese nombre en el sistema).
 
-
-def is_cesar_comentario(row) -> bool:
-    """True si el lead es de César Augusto y su Canal offline es Messenger o Instagram.
-
-    Representan comentarios de usuarios en redes: cuentan siempre para
-    Orgánico+TikTok, sin importar el estado actual del lead.
+    Comparación sin tildes: el Excel puede traer "César" o "Cesar" según cómo
+    lo haya tipeado cada usuario, y ambas formas deben matchear igual.
     """
-    if not is_cesar_augusto(row):
-        return False
-    canal_off = _safe_str(row.get("Canal offline", "")).strip().lower()
-    return canal_off in CESAR_COMENTARIOS_CHANNELS
+    propietario = _strip_accents(_safe_str(row.get("propietario", "")).strip().lower())
+    return propietario.startswith(CESAR_AUGUSTO_PREFIX)
 
 
 def is_asesor_comercial(propietario) -> bool:
@@ -226,17 +236,40 @@ def _origen_pauta_facebook_instagram(row) -> bool:
 
 
 def is_marketing(row) -> bool:
-    """Devuelve True si el lead pertenece a Pauta (marketing pago), sin incluir
-    TikTok, Orgánico ni Referidos (categorías separadas)."""
+    """Devuelve True si el lead pertenece a Pauta (marketing).
+
+    Regla de negocio (2026-07-03e): Pauta ahora incluye TikTok, Orgánico,
+    Llamada telefónica, cualquier canal de redes sociales (Facebook,
+    Instagram, WhatsApp, Messenger, etc.) y cualquier "Referido" cuyo Canal
+    offline mencione "redes" — aunque diga "referido". El check de "redes"
+    se evalúa ANTES que el de "referido puro" a propósito: por eso
+    "Referido cliente activo - Redes" es Pauta, no Referido. Solo el
+    referido que NO menciona "redes" es Referido puro.
+    """
     canal_off = _safe_str(row.get("Canal offline", "")).strip().lower()
     canal_on = _safe_str(row.get("canal online", "")).strip().lower()
 
-    # TikTok y Orgánico son categorías propias, no Pauta.
-    if is_tiktok(row) or is_organico(row):
-        return False
+    # "Redes" en el Canal offline (incluso si dice "referido") → SIEMPRE Pauta.
+    # Se evalúa antes que cualquier otro check, incluido el de "referido puro".
+    if PAUTA_REDES_TERM in canal_off:
+        return True
 
-    # Canal offline que empiece con "referido" → SIEMPRE Referido, incluso si
-    # trae la palabra "redes" (p.ej. "Referido cliente activo - Redes").
+    # TikTok y Orgánico ahora son Pauta.
+    if is_tiktok(row) or is_organico(row):
+        return True
+
+    # Cualquier canal de redes sociales explícito (Facebook/Instagram/
+    # WhatsApp/Messenger/etc.) → Pauta, por substring (no igualdad exacta).
+    if any(term in canal_off for term in SOCIAL_CHANNEL_TERMS):
+        return True
+
+    # Cualquier variante de "llamada" (Llamada Entrante, Llamada Telefónica,
+    # etc.) → Pauta, por substring (no solo la igualdad exacta ya cubierta
+    # por MARKETING_OFFLINE_CHANNELS más abajo).
+    if PAUTA_LLAMADA_TERM in canal_off:
+        return True
+
+    # Referido puro (sin "redes" en el nombre) → NO es Pauta.
     if canal_off.startswith(REFERIDO_PREFIX):
         return False
 
@@ -257,20 +290,21 @@ def is_marketing(row) -> bool:
 
 
 def valid_closure_event_mask(df: pd.DataFrame, date_col: str, year: int, month: int) -> pd.Series:
-    """Máscara booleana: True si `date_col` cae en (year, month) Y el lead está Activo."""
+    """Máscara booleana: True si `date_col` cae en (year, month) Y el cierre es válido
+    (estado != "inactivo")."""
     if date_col not in df.columns or df.empty:
         return pd.Series(False, index=df.index)
     s = pd.to_datetime(df[date_col], errors="coerce")
     in_month = (s.dt.year == year) & (s.dt.month == month)
-    active = df.apply(_is_active_estado, axis=1)
-    return in_month & active
+    valid = df.apply(_is_valid_closure_estado, axis=1)
+    return in_month & valid
 
 
 def _sum_valid_closures(
     df_full: pd.DataFrame, year: int, month: int, predicate=None
 ) -> int:
-    """Suma cierres válidos (Activo) del mes en las 4 columnas de fecha de cierre,
-    opcionalmente filtrados por `predicate(row) -> bool`."""
+    """Suma cierres válidos (estado != "inactivo") del mes en las 4 columnas de
+    fecha de cierre, opcionalmente filtrados por `predicate(row) -> bool`."""
     total = 0
     for col in CLOSE_DATE_COLS:
         mask = valid_closure_event_mask(df_full, col, year, month)
@@ -325,7 +359,8 @@ def compute_all_metrics(
             asignados=0, asignados_pauta=0, asignados_organico=0, asignados_tiktok=0,
             calificados=0, no_calificados=0,
             total_cierres=0,
-            eficiencia_pauta=0.0, eficiencia_bruta=0.0, eficiencia_global=0.0,
+            eficiencia_real=0.0, eficiencia_bruta=0.0, eficiencia_global=0.0,
+            total_cierres_estricto=0,
             total_cierres_general=0, cierres_marketing=0, cierres_referidos=0,
             cierres_organico=0, cierres_tiktok=0, cierres_no_pauta=0,
             no_calificados_pauta=0, no_calificados_referido=0,
@@ -358,19 +393,23 @@ def compute_all_metrics(
     tiktok_mask = df_period.apply(is_tiktok, axis=1)
     organico_mask = df_period.apply(is_organico, axis=1)
     cesar_mask = df_period.apply(is_cesar_augusto, axis=1)
-    cesar_comentarios_mask = df_period.apply(is_cesar_comentario, axis=1)
 
     # "Leads generales" de Orgánico/TikTok excluyen a César Augusto: sus leads
-    # solo entran vía Suma 1 (Messenger/Instagram, ver is_cesar_comentario),
-    # sin importar su estado — no se dividen entre Orgánico/TikTok individualmente.
+    # entran completos vía Suma 1 (ver abajo), sin dividirse entre las
+    # tarjetas individuales de Orgánico/TikTok.
     organico_generales_mask = organico_mask & ~cesar_mask
     tiktok_generales_mask = tiktok_mask & ~cesar_mask
 
     leads_pauta = int(mkt_mask.sum())
     leads_organico = int(organico_generales_mask.sum())
     leads_tiktok = int(tiktok_generales_mask.sum())
-    # Suma 1 (César + Messenger/Instagram) + Suma 2 (TikTok estricto + Orgánico puro).
-    leads_organico_tiktok = leads_organico + leads_tiktok + int(cesar_comentarios_mask.sum())
+    # Regla 2026-07-03h: Suma 1 = TODO lead cuyo propietario sea César Augusto,
+    # sin importar canal/origen de contacto (ya no se filtra por
+    # Messenger/Instagram). Suma 2 = TikTok/Orgánico de canal (no-César).
+    # Sin doble conteo: is_tiktok tiene prioridad sobre is_organico (ver
+    # is_organico), así que un lead con Canal offline=TikTok y Origen de la
+    # pauta=Orgánico cae una sola vez en Suma 2b (TikTok).
+    leads_organico_tiktok = leads_organico + leads_tiktok + int(cesar_mask.sum())
 
     # --- Asignados: solo Asesores Comerciales ---
     if "propietario" in df_period.columns:
@@ -387,41 +426,58 @@ def compute_all_metrics(
     calificados = int(is_qualified_mask(df_asignados).sum()) if not df_asignados.empty else 0
     no_calificados = asignados - calificados
 
-    # --- Cierres válidos (Activo), sumando las 4 columnas, sobre el dataset completo ---
+    # Calificados por canal (movido antes de "Eficiencias" porque los usan
+    # los campos legados calificados_pauta/no_calificados_pauta más abajo).
+    # NO están restringidos a Asignados (a diferencia de `calificados` de
+    # arriba) — se mantiene el criterio legado ya usado por
+    # creados_pauta/creados_referido más abajo.
+    df_mkt = df_period[mkt_mask]
+    df_ref = df_period[~mkt_mask]
+    calificados_pauta = int(is_qualified_mask(df_mkt).sum())
+    calificados_referido = int(is_qualified_mask(df_ref).sum())
+
+    # --- Cierres válidos (estado != "inactivo"), sumando las 4 columnas (multi-cierre)
+    # sobre el dataset completo ---
+    # cierres_marketing (Pauta) ahora INCLUYE TikTok/Orgánico/redes-referidos
+    # (regla 2026-07-03e, ver is_marketing). cierres_organico_valid y
+    # cierres_tiktok_valid se siguen calculando como desgloses informativos
+    # (subconjuntos de cierres_marketing), pero NO se vuelven a sumar en los
+    # totales de abajo — sumarlos de nuevo contaría esos cierres dos veces.
     cierres_marketing = _sum_valid_closures(df_full, year, month, is_marketing)
     cierres_organico_valid = _sum_valid_closures(df_full, year, month, is_organico)
     cierres_tiktok_valid = _sum_valid_closures(df_full, year, month, is_tiktok)
 
     def _is_referido(row) -> bool:
+        # Equivale a "not is_marketing(row)": is_marketing ya incluye
+        # TikTok/Orgánico, así que Referido puro es exactamente su complemento.
         return not (is_marketing(row) or is_organico(row) or is_tiktok(row))
 
     cierres_referidos = _sum_valid_closures(df_full, year, month, _is_referido)
-    cierres_no_pauta = cierres_organico_valid + cierres_tiktok_valid + cierres_referidos
+    # "No pauta" = Referidos puros únicamente (TikTok/Orgánico ya son Pauta).
+    cierres_no_pauta = cierres_referidos
 
-    total_cierres = cierres_marketing + cierres_organico_valid
-    total_cierres_general = (
-        cierres_marketing + cierres_organico_valid + cierres_tiktok_valid + cierres_referidos
-    )
+    # Pauta (ahora incluye TikTok/Orgánico) + Referido puro = partición
+    # binaria completa de TODOS los cierres válidos, sin huecos ni doble conteo.
+    total_cierres = cierres_marketing
+    total_cierres_general = cierres_marketing + cierres_referidos
 
-    # --- Eficiencias (fórmulas exactas) ---
-    # % Eficiencia de Pauta = (Cierres por Pauta * 100) / Total Asignado a los Asesores
-    # (el universo total de comerciales, no solo el subconjunto de pauta).
-    eficiencia_pauta = (cierres_marketing * 100 / asignados) if asignados else 0.0
+    # --- Eficiencias (fórmulas exactas, 2026-07-03i) ---
+    # % Eficiencia Real (antes "% Eficiencia Pauta") = (Cierres de Pauta * 100)
+    # / Calificados del MES (total, no solo calificados_pauta) — qué fracción
+    # de todo el universo que sí calificó terminó siendo un cierre de Pauta.
+    eficiencia_real = (cierres_marketing * 100 / calificados) if calificados else 0.0
     denom_bruta = asignados_pauta + leads_organico + leads_tiktok + calificados + no_calificados
     eficiencia_bruta = (total_cierres * 100 / denom_bruta) if denom_bruta else 0.0
 
-    # % Eficiencia Global = rendimiento real de TODA la operación: todos los
-    # cierres válidos (Pauta+Orgánico+TikTok+Referidos) sobre el volumen total
-    # de leads comerciales asignados (mismo denominador que Eficiencia de Pauta).
-    eficiencia_global = (total_cierres_general * 100 / asignados) if asignados else 0.0
+    # % Eficiencia Global = (Cierres de Pauta * 100) / Leads CREADOS del mes
+    # (denominador más amplio: todo lo que entró, calificado o no).
+    eficiencia_global = (cierres_marketing * 100 / creados) if creados else 0.0
 
     # --- Campos legados (mantener para compatibilidad con secciones/tests que ya existen) ---
-    df_mkt = df_period[mkt_mask]
-    df_ref = df_period[~mkt_mask]
+    # df_mkt/df_ref/calificados_pauta/calificados_referido ya se calcularon
+    # más arriba.
     creados_pauta = len(df_mkt)
     creados_referido = len(df_ref)
-    calificados_pauta = int(is_qualified_mask(df_mkt).sum())
-    calificados_referido = int(is_qualified_mask(df_ref).sum())
     no_calificados_pauta = creados_pauta - calificados_pauta
     no_calificados_referido = creados_referido - calificados_referido
 
@@ -478,6 +534,12 @@ def compute_all_metrics(
 
     eficiencia_referido = (cierres_referidos / calificados_referido) if calificados_referido else 0.0
 
+    # Suma ESTRICTA para la tarjeta "Total Cierres": Pauta(M) + Referidos(R) +
+    # Adicionales, calculada a partir de los mismos 3 números que se muestran
+    # en las tarjetas individuales, para que por construcción NUNCA se
+    # desincronice de lo que ve el usuario en pantalla.
+    total_cierres_estricto = cierres_pauta_primer + cierres_referido_primer + cierres_adicionales
+
     return Metrics(
         creados=creados,
         leads_pauta=leads_pauta, leads_organico=leads_organico, leads_tiktok=leads_tiktok,
@@ -486,8 +548,9 @@ def compute_all_metrics(
         asignados_organico=asignados_organico, asignados_tiktok=asignados_tiktok,
         calificados=calificados, no_calificados=no_calificados,
         total_cierres=total_cierres,
-        eficiencia_pauta=eficiencia_pauta, eficiencia_bruta=eficiencia_bruta,
+        eficiencia_real=eficiencia_real, eficiencia_bruta=eficiencia_bruta,
         eficiencia_global=eficiencia_global,
+        total_cierres_estricto=total_cierres_estricto,
         total_cierres_general=total_cierres_general,
         cierres_marketing=cierres_marketing, cierres_referidos=cierres_referidos,
         cierres_organico=cierres_organico_valid, cierres_tiktok=cierres_tiktok_valid,

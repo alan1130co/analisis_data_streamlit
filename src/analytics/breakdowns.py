@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import is_marketing, is_qualified_mask, _safe_str, _is_active_estado
+from src.analytics.metrics import is_marketing, is_qualified_mask, _safe_str, _is_valid_closure_estado
 from src.config.settings import REFERIDO_PREFIX
 
 _CLOSE_COLS = [
@@ -187,7 +187,7 @@ def pauta_vs_referidos(df_period: pd.DataFrame, df_full: pd.DataFrame) -> pd.Dat
 
     year, month = _infer_period(df_period)
     mkt_mask_full = df_full.apply(is_marketing, axis=1)
-    active_full = df_full.apply(_is_active_estado, axis=1)
+    active_full = df_full.apply(_is_valid_closure_estado, axis=1)
 
     pauta_n = 0
     ref_n = 0
@@ -234,7 +234,7 @@ def cierres_por_canal(
         return empty
 
     year, month = _infer_period(df_period)
-    active_full = df_full.apply(_is_active_estado, axis=1)
+    active_full = df_full.apply(_is_valid_closure_estado, axis=1)
 
     rows = []
     for col in _CLOSE_COLS:

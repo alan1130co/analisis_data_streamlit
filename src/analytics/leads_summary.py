@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 
 from src.analytics.filters import filter_by_month
-from src.analytics.metrics import is_marketing, is_qualified_mask, _is_active_estado
+from src.analytics.metrics import is_marketing, is_qualified_mask, _is_valid_closure_estado
 
 
 def leads_summary(
@@ -38,7 +38,7 @@ def leads_summary(
         cierres = 0
         referidos = 0
         if not df_month.empty and "Fecha de cierre" in df_month.columns:
-            active = df_month.apply(_is_active_estado, axis=1)
+            active = df_month.apply(_is_valid_closure_estado, axis=1)
             mask_cierre = pd.to_datetime(df_month["Fecha de cierre"], errors="coerce").notna() & active
             cierres = int(mask_cierre.sum())
             mask_referido = df_month.apply(lambda r: not is_marketing(r), axis=1)

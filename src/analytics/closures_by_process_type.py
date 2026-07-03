@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing, _safe_str, _is_active_estado
+from src.analytics.metrics import is_marketing, _safe_str, _is_valid_closure_estado
 
 CATEGORY_COLUMN = "Tipo de proceso"
 CATEGORY_LABEL = "Tipo de proceso"
@@ -20,7 +20,7 @@ def closures_by_process_type(
     if df_full.empty or CATEGORY_COLUMN not in df_full.columns:
         return pd.DataFrame(columns=[CATEGORY_LABEL, "Total", "Porcentaje"])
 
-    active = df_full.apply(_is_active_estado, axis=1)
+    active = df_full.apply(_is_valid_closure_estado, axis=1)
     rows = []
     for col in _CLOSURE_COLS:
         if col not in df_full.columns:

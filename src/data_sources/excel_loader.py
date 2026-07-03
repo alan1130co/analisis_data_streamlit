@@ -46,7 +46,7 @@ class ExcelContactsLoader(ContactsDataSource):
         # Normalizar texto
         text_cols = [
             "estado", "canal online", "Origen de la pauta", "propietario",
-            "Motivo de no cierre", "Canal offline",
+            "Motivo de no cierre", "Canal offline", "origen contacto",
         ]
         for col in text_cols:
             if col in df.columns:

@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 
 from src.analytics.filters import filter_by_month
-from src.analytics.metrics import is_marketing, _is_active_estado
+from src.analytics.metrics import is_marketing, _is_valid_closure_estado
 
 _CLOSE_COLS = [
     "Fecha de cierre",
@@ -35,7 +35,7 @@ def social_yearly(
 
     mkt_mask_full = df.apply(is_marketing, axis=1)
     df_mkt_full = df[mkt_mask_full]
-    active_mkt_full = df_mkt_full.apply(_is_active_estado, axis=1)
+    active_mkt_full = df_mkt_full.apply(_is_valid_closure_estado, axis=1)
 
     if advisors and "propietario" in df_mkt_full.columns:
         df_mkt_full = df_mkt_full[df_mkt_full["propietario"].isin(advisors)]

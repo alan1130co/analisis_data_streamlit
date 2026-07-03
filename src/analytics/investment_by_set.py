@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing, _is_active_estado
+from src.analytics.metrics import is_marketing, _is_valid_closure_estado
 
 
 def investment_by_set(
@@ -72,7 +72,7 @@ def investment_by_set(
         cierres_pauta_total = 0
         if "Fecha de cierre" in df_clientify.columns:
             s = pd.to_datetime(df_clientify["Fecha de cierre"], errors="coerce")
-            active = df_clientify.apply(_is_active_estado, axis=1)
+            active = df_clientify.apply(_is_valid_closure_estado, axis=1)
             mask = (s.dt.year == year) & (s.dt.month == month) & active
             sub = df_clientify[mask]
             if not sub.empty:

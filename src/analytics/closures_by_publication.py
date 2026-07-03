@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 
-from src.analytics.metrics import is_marketing, _safe_str, _is_active_estado
+from src.analytics.metrics import is_marketing, _safe_str, _is_valid_closure_estado
 
 
 _EXCLUIDOS = {"nan", "none", "sin definir", "no aplica"}
@@ -88,7 +88,7 @@ def closures_by_publication(
         return pd.DataFrame(columns=["Publicacion", "Cierres", "Porcentaje"])
 
     s = pd.to_datetime(df_clientify[col], errors="coerce")
-    active = df_clientify.apply(_is_active_estado, axis=1)
+    active = df_clientify.apply(_is_valid_closure_estado, axis=1)
     mask = (s.dt.year == year) & (s.dt.month == month) & active
     sub = df_clientify[mask]
 
@@ -136,7 +136,7 @@ def closures_by_origen_pauta(
         return pd.DataFrame(columns=["Origen", "Cierres", "Porcentaje"])
 
     s = pd.to_datetime(df_clientify[col], errors="coerce")
-    active = df_clientify.apply(_is_active_estado, axis=1)
+    active = df_clientify.apply(_is_valid_closure_estado, axis=1)
     mask = (s.dt.year == year) & (s.dt.month == month) & active
     sub = df_clientify[mask]
 

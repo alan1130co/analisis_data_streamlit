@@ -75,6 +75,10 @@ def render_kpi_cards(
     )
 
     with st.expander("Desglose de cierres por etapa"):
+        st.caption(
+            "Cuenta contratos válidos (estado ≠ \"inactivo\") cuya fecha de "
+            "cierre correspondiente cae en el mes seleccionado, en cualquier canal."
+        )
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("1er cierre", metrics.cierres_1)
         c2.metric("2do cierre", metrics.cierres_2)

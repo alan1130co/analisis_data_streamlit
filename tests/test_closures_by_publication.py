@@ -94,8 +94,9 @@ def test_closures_by_publication_excluye_referidos():
     assert result.iloc[0]["Publicacion"] == "Video 1"
 
 
-def test_closures_by_publication_excluye_organico():
-    """Orgánico es categoría propia (no Pauta): no se incluye en esta tabla, solo Whatsapp."""
+def test_closures_by_publication_incluye_organico_excluye_referido():
+    """2026-07-03e: Orgánico ahora es Pauta (se incluye, junto con Whatsapp);
+    el referido puro sigue excluido de esta tabla."""
     df = pd.DataFrame([
         {"Canal offline": "organico", "canal online": "", "estado": "activo",
          "Publicacion por la que se contacto el cliente": "Video 1",
@@ -111,7 +112,7 @@ def test_closures_by_publication_excluye_organico():
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
     result = closures_by_publication(df, 2026, 5)
-    assert int(result["Cierres"].sum()) == 1, f"Solo Whatsapp debe contarse, total={result['Cierres'].sum()}"
+    assert int(result["Cierres"].sum()) == 2, f"Orgánico + Whatsapp deben contarse, total={result['Cierres'].sum()}"
 
 
 def test_tabla_excluye_no_aplica():
@@ -170,8 +171,10 @@ def test_origen_pauta_prioritario_sobre_canal_offline_para_instagram():
     assert result.iloc[0]["Origen"] == "Instagram"
 
 
-def test_donut_excluye_organico_y_tiktok():
-    """Orgánico y TikTok ya no son Pauta: no aparecen en el donut de origen de pauta."""
+def test_donut_incluye_organico_y_tiktok_como_pauta():
+    """2026-07-03e: Orgánico y TikTok ahora son Pauta, así que SÍ aparecen en
+    el donut de origen de pauta — _mapear_canal_a_red() los agrupa a ambos
+    bajo la etiqueta 'TikTok'."""
     df = pd.DataFrame([
         {"Canal offline": "org\xe1nico", "canal online": "", "estado": "activo",
          "Fecha de cierre": pd.Timestamp("2026-05-01"),
@@ -181,4 +184,6 @@ def test_donut_excluye_organico_y_tiktok():
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
     result = closures_by_origen_pauta(df, 2026, 5)
-    assert result.empty
+    assert not result.empty
+    assert result.iloc[0]["Origen"] == "TikTok"
+    assert int(result.iloc[0]["Cierres"]) == 2

@@ -20,7 +20,7 @@ def format_percent(value: float, decimals: int = 1) -> str:
 def format_percent_raw(value: float, decimals: int = 1) -> str:
     """Formato porcentaje para valores YA expresados en puntos (recibe 4.2 -> '4.2%').
 
-    Usar con KPIs cuya fórmula ya multiplica por 100 (eficiencia_pauta,
+    Usar con KPIs cuya fórmula ya multiplica por 100 (eficiencia_real,
     eficiencia_bruta, eficiencia_global) para no re-escalar por 100 dos veces.
     """
     try:

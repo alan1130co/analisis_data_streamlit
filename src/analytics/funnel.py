@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import is_qualified_mask, _is_active_estado
+from src.analytics.metrics import is_qualified_mask, _is_valid_closure_estado
 
 _CLOSE_COLS = [
     "Fecha de cierre",
@@ -26,7 +26,7 @@ def _count_closures_in_month(df: pd.DataFrame, year: int, month: int) -> int:
     """Cuenta cierres válidos (Activo) del mes, sumando las 4 columnas de fecha de cierre."""
     if df.empty:
         return 0
-    active = df.apply(_is_active_estado, axis=1)
+    active = df.apply(_is_valid_closure_estado, axis=1)
     total = 0
     for col in _CLOSE_COLS:
         if col not in df.columns:

@@ -12,7 +12,13 @@ from src.ui.upload import render_upload
 from src.ui.kpi_cards import render_kpi_cards
 from src.ui.styles import inject_custom_css
 from src.analytics.metrics import compute_all_metrics, is_marketing
-from src.analytics.filters import filter_by_month, available_months, previous_month
+from src.analytics.filters import (
+    filter_by_month,
+    available_months,
+    previous_month,
+    default_month_index,
+    format_month_label,
+)
 
 from src.ui.sections.pauta_vs_referidos import render_pauta_vs_referidos
 from src.ui.sections.cierres_por_canal import render_cierres_por_canal
@@ -133,8 +139,8 @@ def main():
     selected = st.selectbox(
         "Período de análisis",
         options=months,
-        index=0,
-        format_func=lambda m: m.strftime("%B %Y").capitalize(),
+        index=default_month_index(months),
+        format_func=lambda m: format_month_label(m),
     )
 
     # Métricas siempre sobre el dataset completo — los campos internos ya separan pauta/referido
