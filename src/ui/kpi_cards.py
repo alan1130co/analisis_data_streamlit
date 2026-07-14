@@ -79,8 +79,23 @@ def render_kpi_cards(
             "Cuenta contratos válidos (estado ≠ \"inactivo\") cuya fecha de "
             "cierre correspondiente cae en el mes seleccionado, en cualquier canal."
         )
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("1er cierre", metrics.cierres_1)
-        c2.metric("2do cierre", metrics.cierres_2)
-        c3.metric("3er cierre", metrics.cierres_3)
-        c4.metric("4to cierre", metrics.cierres_4)
+        etapas = [
+            ("1er cierre", metrics.cierres_1),
+            ("2do cierre", metrics.cierres_2),
+            ("3er cierre", metrics.cierres_3),
+            ("4to cierre", metrics.cierres_4),
+        ]
+        # HTML/CSS custom (no st.columns): st.columns apila verticalmente en
+        # mobile por defecto, y acá queremos 2x2 en pantallas chicas, no 4
+        # filas — ver .etapa-grid en kpi_cards.css / responsive.css.
+        etapa_cards = "".join(
+            f'<div class="etapa-card">'
+            f'<div class="etapa-value">{format_int(valor)}</div>'
+            f'<div class="etapa-label">{label}</div>'
+            f'</div>'
+            for label, valor in etapas
+        )
+        st.markdown(
+            f'<div class="etapa-grid">{etapa_cards}</div>',
+            unsafe_allow_html=True,
+        )

@@ -17,3 +17,41 @@
         grid-template-columns: repeat(4, 1fr);
     }
 }
+
+/* Celulares (~380-430px de ancho). El desktop (>768px) queda intacto. */
+@media (max-width: 640px) {
+    .kpi-card {
+        padding: 10px 8px;
+        min-height: 84px;
+    }
+    .kpi-value {
+        font-size: clamp(1.1rem, 5vw, 1.6rem);
+    }
+    .kpi-label {
+        font-size: clamp(0.62rem, 3vw, 0.75rem);
+    }
+
+    /* Desglose de cierres por etapa: 2x2 en vez de 4 en fila */
+    .etapa-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Tablas: st.dataframe ya trae scroll horizontal propio; esto es
+       refuerzo para que ningún contenedor padre la empuje a desbordar. */
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrameResizable"] {
+        max-width: 100%;
+        overflow-x: auto;
+        font-size: 0.78rem;
+    }
+
+    /* Selector de período / uploader: alto táctil mínimo recomendado (~44px)
+       y que el texto de ayuda no se corte en pantallas angostas. */
+    [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    [data-testid="stFileUploaderDropzone"] {
+        min-height: 44px;
+    }
+    [data-testid="stFileUploaderDropzoneInstructions"] {
+        white-space: normal;
+    }
+}

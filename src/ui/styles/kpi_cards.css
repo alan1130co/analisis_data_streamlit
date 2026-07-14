@@ -49,3 +49,33 @@
 .kpi-delta-up   { color: var(--color-success); }
 .kpi-delta-down { color: var(--color-danger); }
 .kpi-delta-flat { color: #9CA3AF; }
+
+/* Desglose de cierres por etapa (1er/2do/3er/4to) */
+.etapa-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-sm);
+    margin-top: 4px;
+}
+
+.etapa-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 8px;
+    text-align: center;
+}
+
+.etapa-value {
+    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+}
+
+.etapa-label {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
