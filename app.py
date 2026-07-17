@@ -162,11 +162,11 @@ def main():
     st.header("Análisis detallado")
 
     # Secciones que respetan filtro de equipo
-    render_pauta_vs_referidos(df_current, df, team=equipo)
+    render_pauta_vs_referidos(df_current, df, selected.year, selected.month, team=equipo)
     st.markdown("---")
-    render_cierres_por_canal(df_current, df_full, team=equipo)
+    render_cierres_por_canal(df_current, df_full, selected.year, selected.month, team=equipo)
     st.markdown("---")
-    render_funnel(df_current, df_full)
+    render_funnel(df_current, df_full, selected.year, selected.month)
     st.markdown("---")
     render_daily_sales(df_full, selected)
 
@@ -199,7 +199,7 @@ def main():
     render_closures_by_age(df, selected.year, selected.month, team=equipo)
 
     st.markdown("---")
-    render_closures_by_gender(df, selected.year, selected.month, team=equipo)
+    render_closures_by_gender(df, selected.year, selected.month)
 
     st.markdown("---")
     render_closures_by_publication(df_unfiltered, selected.year, selected.month)

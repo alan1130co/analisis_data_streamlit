@@ -19,16 +19,6 @@ _CLOSE_COLS = [
 ]
 
 
-def _infer_period(df_period: pd.DataFrame) -> tuple[int, int]:
-    """Infiere año y mes del período desde la columna 'creado' de df_period."""
-    dates = pd.to_datetime(df_period["creado"], errors="coerce").dropna()
-    if dates.empty:
-        now = pd.Timestamp.now()
-        return (int(now.year), int(now.month))
-    first = dates.iloc[0]
-    return (int(first.year), int(first.month))
-
-
 def _closures_in_month_mask(df: pd.DataFrame, year: int, month: int) -> pd.Series:
     """Máscara booleana: True si el lead tiene al menos un cierre en el mes dado."""
     mask = pd.Series(False, index=df.index)
@@ -42,10 +32,19 @@ def _closures_in_month_mask(df: pd.DataFrame, year: int, month: int) -> pd.Serie
 def efficiency_by_advisor(
     df_period: pd.DataFrame,
     df_full: pd.DataFrame,
+    year: int,
+    month: int,
     team: str = "Marketing (pautas)",
     only_with_closures: bool = True,
 ) -> pd.DataFrame:
     """Tabla de eficiencia por asesor, con columnas según el equipo seleccionado.
+
+    `year`/`month` son OBLIGATORIOS: deben ser el período activo seleccionado
+    en el frontend (el mismo usado para construir `df_period`). Antes se
+    inferían leyendo la primera fecha de `df_period['creado']` con fallback
+    silencioso a `pd.Timestamp.now()` si venía vacío — eso desincronizaba esta
+    tabla del período elegido en el dropdown principal cuando el mes
+    seleccionado no tenía leads CREADOS todavía (solo cierres de leads viejos).
 
     team:
       - "Marketing (pautas)": columnas pauta + calificados + efic s/cal
@@ -54,8 +53,6 @@ def efficiency_by_advisor(
     """
     if df_period.empty or "propietario" not in df_period.columns:
         return pd.DataFrame()
-
-    year, month = _infer_period(df_period)
 
     def _cierres_por_asesor(filter_marketing: bool | None) -> dict[str, int]:
         """Cuenta cierres del mes por asesor — solo 1ra columna (Fecha de cierre)."""
@@ -171,9 +168,14 @@ def efficiency_by_advisor(
     return df_out.sort_values(sort_col, ascending=False).reset_index(drop=True)
 
 
-def pauta_vs_referidos(df_period: pd.DataFrame, df_full: pd.DataFrame) -> pd.DataFrame:
+def pauta_vs_referidos(
+    df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int
+) -> pd.DataFrame:
     """
     Cierres del mes divididos en Pauta (is_marketing) y Referidos.
+
+    `year`/`month` son OBLIGATORIOS: el período activo seleccionado en el
+    frontend, no se infiere de los datos (ver nota en `efficiency_by_advisor`).
 
     Cuenta cierres válidos (estado Activo) sumando las 4 fechas de cierre de
     df_full que caen en el mes. Columnas: Origen, Cantidad, Porcentaje.
@@ -185,7 +187,6 @@ def pauta_vs_referidos(df_period: pd.DataFrame, df_full: pd.DataFrame) -> pd.Dat
     if df_period.empty:
         return empty
 
-    year, month = _infer_period(df_period)
     mkt_mask_full = df_full.apply(is_marketing, axis=1)
     active_full = df_full.apply(_is_valid_closure_estado, axis=1)
 
@@ -213,10 +214,15 @@ def pauta_vs_referidos(df_period: pd.DataFrame, df_full: pd.DataFrame) -> pd.Dat
 def cierres_por_canal(
     df_period: pd.DataFrame,
     df_full: pd.DataFrame,
+    year: int,
+    month: int,
     team: str = "Marketing (pautas)",
     only_marketing: bool | None = None,
 ) -> pd.DataFrame:
     """Cuenta TODOS los cierres del mes (las 4 columnas de fecha) atribuidos al canal del lead.
+
+    `year`/`month` son OBLIGATORIOS: el período activo seleccionado en el
+    frontend, no se infiere de los datos (ver nota en `efficiency_by_advisor`).
 
     Filtra por team:
     - "Marketing (pautas)": solo cierres cuyo lead is_marketing=True
@@ -233,7 +239,6 @@ def cierres_por_canal(
     if df_period.empty:
         return empty
 
-    year, month = _infer_period(df_period)
     active_full = df_full.apply(_is_valid_closure_estado, axis=1)
 
     rows = []

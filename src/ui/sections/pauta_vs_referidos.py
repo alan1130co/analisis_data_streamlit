@@ -15,11 +15,13 @@ _SUCCESS = "#16A34A"
 def render_pauta_vs_referidos(
     df_period: pd.DataFrame,
     df_full: pd.DataFrame,
+    year: int,
+    month: int,
     team: str | None = None,
 ) -> None:
     st.subheader("📡 Pauta vs Referidos")
 
-    data = pauta_vs_referidos(df_period, df_full)
+    data = pauta_vs_referidos(df_period, df_full, year, month)
     pauta_row = data[data["Origen"] == "Pauta"].iloc[0]
     ref_row = data[data["Origen"] == "Referidos"].iloc[0]
     total = int(pauta_row["Cantidad"]) + int(ref_row["Cantidad"])

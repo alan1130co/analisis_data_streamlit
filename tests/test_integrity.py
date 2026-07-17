@@ -94,17 +94,17 @@ def test_totales_cuadran_entre_secciones():
     metrics = compute_all_metrics(df_period, df_full)
     expected = metrics.total_cierres_general  # 4
 
-    pvr = pauta_vs_referidos(df_period, df_full)
+    pvr = pauta_vs_referidos(df_period, df_full, 2026, 4)
     assert int(pvr["Cantidad"].sum()) == expected, \
         f"pauta_vs_referidos sumó {pvr['Cantidad'].sum()}, KPI dice {expected}"
 
-    canal_todos = cierres_por_canal(df_period, df_full, team="Todos")
+    canal_todos = cierres_por_canal(df_period, df_full, 2026, 4, team="Todos")
     assert int(canal_todos["Cantidad"].sum()) == expected, \
         f"cierres_por_canal team=Todos sumó {canal_todos['Cantidad'].sum()}, KPI dice {expected}"
 
-    funnel = funnel_by_advisor(df_period, df_full)
-    assert int(funnel["Cierres"].sum()) == expected, \
-        f"funnel sumó {funnel['Cierres'].sum()}, KPI dice {expected}"
+    funnel = funnel_by_advisor(df_period, df_full, 2026, 4)
+    assert int(funnel["Cierres Totales"].sum()) == expected, \
+        f"funnel sumó {funnel['Cierres Totales'].sum()}, KPI dice {expected}"
 
 
 def test_calificados_consistente_entre_secciones():
@@ -140,11 +140,11 @@ def test_calificados_consistente_entre_secciones():
     metrics = compute_all_metrics(df_period, df_period)
     # Expected: 3 calificados (Motivo=None ×2, QUALIFIED_MOTIVES ×1; UNQUALIFIED ×1 → NO)
 
-    funnel = funnel_by_advisor(df_period, df_period)
+    funnel = funnel_by_advisor(df_period, df_period, 2026, 4)
     assert metrics.calificados == int(funnel["Calificados"].sum()), \
         f"KPI={metrics.calificados}, funnel={funnel['Calificados'].sum()}"
 
-    eff = efficiency_by_advisor(df_period, df_period, only_with_closures=False)
+    eff = efficiency_by_advisor(df_period, df_period, 2026, 4, only_with_closures=False)
     assert metrics.calificados == int(eff["Calificados"].sum()), \
         f"KPI={metrics.calificados}, efficiency={eff['Calificados'].sum()}"
 
@@ -297,8 +297,8 @@ def test_april_2026_numeros_reales_verificados_manualmente():
     assert metrics.total_cierres_general == 33, f"total_cierres_general={metrics.total_cierres_general}, esperado 33"
 
     # === Cierres por canal cuadran con totales (válidos, suma 1+2+3+4) ===
-    canal_todos = cierres_por_canal(df_april, df, team="Todos")
-    canal_marketing = cierres_por_canal(df_april, df, team="Marketing (pautas)")
+    canal_todos = cierres_por_canal(df_april, df, 2026, 4, team="Todos")
+    canal_marketing = cierres_por_canal(df_april, df, 2026, 4, team="Marketing (pautas)")
 
     assert int(canal_todos["Cantidad"].sum()) == 33, \
         f"canal Todos suma {canal_todos['Cantidad'].sum()}, esperado 33"

@@ -42,13 +42,16 @@ def render_daily_sales(df_full: pd.DataFrame, selected_month: date) -> None:
     c1, c2 = st.columns(2)
     with c1:
         default_year_idx = year_opts.index(selected_month.year) if selected_month.year in year_opts else len(year_opts) - 1
-        year_sel = st.selectbox("Año", year_opts, index=default_year_idx, key="daily_year")
+        year_sel = st.selectbox(
+            "Año", year_opts, index=default_year_idx,
+            key=f"daily_year_{selected_month.year}_{selected_month.month}",
+        )
     with c2:
         month_label = st.selectbox(
             "Mes",
             _MONTH_VALUES,
             index=selected_month.month - 1,
-            key="daily_month",
+            key=f"daily_month_{selected_month.year}_{selected_month.month}",
         )
         month_sel = _MONTH_KEYS[_MONTH_VALUES.index(month_label)]
 

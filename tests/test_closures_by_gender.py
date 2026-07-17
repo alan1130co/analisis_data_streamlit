@@ -50,6 +50,43 @@ def test_closures_by_gender_filtra_por_team():
     assert int(result_all["Cantidad"].sum()) == 2
 
 
+def test_closures_by_gender_filtro_pauta_incluye_organico_tiktok_redes():
+    """'Solo cierres de pauta' (team='Marketing (pautas)') debe capturar
+    orgánico/tiktok/redes-referido además de facebook/instagram/whatsapp,
+    vía la misma is_marketing() usada en toda la app — y excluir el referido puro."""
+    df = pd.DataFrame([
+        {  # orgánico → Pauta
+            "creado": pd.Timestamp("2026-04-01"), "nombre": "María García",
+            "Canal offline": "organico", "canal online": "inbox",
+            "estado": "activo", "Fecha de cierre": pd.Timestamp("2026-04-05"),
+            "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+        },
+        {  # tiktok → Pauta
+            "creado": pd.Timestamp("2026-04-02"), "nombre": "Ana Lucía",
+            "Canal offline": "tiktok", "canal online": "inbox",
+            "estado": "activo", "Fecha de cierre": pd.Timestamp("2026-04-06"),
+            "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+        },
+        {  # "referido...redes" → Pauta (regla de negocio: redes gana sobre "referido")
+            "creado": pd.Timestamp("2026-04-03"), "nombre": "Sofía Torres",
+            "Canal offline": "referido cliente activo - redes", "canal online": "inbox",
+            "estado": "activo", "Fecha de cierre": pd.Timestamp("2026-04-07"),
+            "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+        },
+        {  # referido puro → NO es Pauta
+            "creado": pd.Timestamp("2026-04-04"), "nombre": "Carlos Pérez",
+            "Canal offline": "referido - amigo", "canal online": "inbox",
+            "estado": "activo", "Fecha de cierre": pd.Timestamp("2026-04-08"),
+            "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+        },
+    ])
+    result_pauta = closures_by_gender(df, 2026, 4, team="Marketing (pautas)")
+    assert int(result_pauta["Cantidad"].sum()) == 3
+
+    result_todos = closures_by_gender(df, 2026, 4, team="Todos")
+    assert int(result_todos["Cantidad"].sum()) == 4
+
+
 def test_detectar_genero_nunca_devuelve_no_identificado():
     """Caso crítico: ningún cierre debe quedar como 'No identificado'."""
     nombres_test = [

@@ -37,14 +37,14 @@ def render_trend(
             "Año fin",
             list(range(2024, today.year + 2)),
             index=list(range(2024, today.year + 2)).index(default_year),
-            key="trend_year_end",
+            key=f"trend_year_end_{default_year}_{default_m}",
         )
     with c2:
         month_label = st.selectbox(
             "Mes fin",
             _MONTH_VALUES,
             index=default_m - 1,
-            key="trend_month_end",
+            key=f"trend_month_end_{default_year}_{default_m}",
         )
         month_end = _MONTH_KEYS[_MONTH_VALUES.index(month_label)]
 

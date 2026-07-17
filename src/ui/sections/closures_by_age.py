@@ -39,7 +39,7 @@ def render_closures_by_age(
         "Período",
         options=options_labels,
         index=options_labels.index(default_label),
-        key="closures_age_period",
+        key=f"closures_age_period_{default_year}_{default_month}",
     )
     sel_year, sel_month = label_to_period[selected_label]
 

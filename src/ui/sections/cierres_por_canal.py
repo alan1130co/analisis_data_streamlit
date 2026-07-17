@@ -17,11 +17,13 @@ _COLORS_10 = [
 def render_cierres_por_canal(
     df_period: pd.DataFrame,
     df_full: pd.DataFrame,
+    year: int,
+    month: int,
     team: str = "Marketing (pautas)",
 ) -> None:
     st.subheader("📋 Cierres por canal")
 
-    data = cierres_por_canal(df_period, df_full, team=team)
+    data = cierres_por_canal(df_period, df_full, year, month, team=team)
     if data.empty:
         st.info("No hay cierres registrados en el período.")
         return

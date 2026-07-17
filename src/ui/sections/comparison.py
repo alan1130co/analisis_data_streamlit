@@ -30,12 +30,15 @@ def render_comparison(df_unfiltered: pd.DataFrame, selected_month: date) -> None
     c1, c2, _ = st.columns([1, 1, 4])
     with c1:
         year_idx = years.index(selected_month.year) if selected_month.year in years else len(years) - 1
-        year_sel = st.selectbox("Año", years, index=year_idx, key="comparison_year")
+        year_sel = st.selectbox(
+            "Año", years, index=year_idx,
+            key=f"comparison_year_{selected_month.year}_{selected_month.month}",
+        )
     with c2:
         month_label = st.selectbox(
             "Mes", _MONTH_VALUES,
             index=selected_month.month - 1,
-            key="comparison_month",
+            key=f"comparison_month_{selected_month.year}_{selected_month.month}",
         )
         month_sel = _MONTH_KEYS[_MONTH_VALUES.index(month_label)]
 

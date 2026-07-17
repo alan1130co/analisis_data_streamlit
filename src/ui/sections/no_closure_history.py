@@ -46,7 +46,7 @@ def render_no_closure_history(
             "Año",
             options=years_avail,
             index=years_avail.index(default_year) if default_year in years_avail else 0,
-            key="ncl_history_year",
+            key=f"ncl_history_year_{default_year}_{default_month}",
         )
 
     with col_m:
@@ -57,7 +57,7 @@ def render_no_closure_history(
             "Mes",
             options=month_options,
             index=month_options.index(default_label),
-            key="ncl_history_month",
+            key=f"ncl_history_month_{default_year}_{default_month}",
         )
         month = month_label_to_num[month_label]
 
@@ -67,7 +67,7 @@ def render_no_closure_history(
             "Asesor",
             options=["Todos"] + advisors,
             index=0,
-            key="ncl_history_advisor",
+            key=f"ncl_history_advisor_{year}_{month}",
         )
 
     dist = motive_distribution_filtered(df_unfiltered, year, month, advisor)

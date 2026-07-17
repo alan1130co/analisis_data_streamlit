@@ -36,14 +36,16 @@ def render_leads_summary(
         st.info("No hay datos con fecha válida.")
         return
 
+    default_suffix = f"{default_month.year}_{default_month.month}" if default_month else "none"
+
     c1, c2 = st.columns(2)
     with c1:
         year_idx = years.index(default_month.year) if default_month and default_month.year in years else 0
-        year_sel = st.selectbox("Año", years, index=year_idx, key="leads_summary_year")
+        year_sel = st.selectbox("Año", years, index=year_idx, key=f"leads_summary_year_{default_suffix}")
     with c2:
         month_opts = ["Todos"] + _MONTH_VALUES
         month_idx = default_month.month if default_month else 0
-        month_label = st.selectbox("Mes", month_opts, index=month_idx, key="leads_summary_month")
+        month_label = st.selectbox("Mes", month_opts, index=month_idx, key=f"leads_summary_month_{default_suffix}")
         month_sel = None if month_label == "Todos" else _MONTH_KEYS[_MONTH_VALUES.index(month_label)]
 
     data = leads_summary(df_unfiltered, year_sel, month=month_sel)
