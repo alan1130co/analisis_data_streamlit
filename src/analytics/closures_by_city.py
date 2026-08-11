@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing, _safe_str, _is_valid_closure_estado
+from src.analytics.metrics import is_marketing, _safe_str, valid_closure_estado_mask
 
 CATEGORY_COLUMN = "ciudad 1"
 CATEGORY_LABEL = "Ciudad"
@@ -20,7 +20,7 @@ def closures_by_city(
     if df_full.empty or CATEGORY_COLUMN not in df_full.columns:
         return pd.DataFrame(columns=[CATEGORY_LABEL, "Total", "Porcentaje"])
 
-    active = df_full.apply(_is_valid_closure_estado, axis=1)
+    active = valid_closure_estado_mask(df_full)
     rows = []
     for col in _CLOSURE_COLS:
         if col not in df_full.columns:

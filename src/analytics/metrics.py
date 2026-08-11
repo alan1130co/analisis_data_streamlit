@@ -164,6 +164,42 @@ def _is_valid_closure_estado(row) -> bool:
     return estado not in CIERRE_INVALID_ESTADOS
 
 
+def valid_closure_estado_mask(df: pd.DataFrame) -> pd.Series:
+    """Versión vectorizada de `_is_valid_closure_estado`, misma regla exacta
+    (estado != "inactivo"), sin iterar fila por fila.
+
+    `_is_valid_closure_estado` se llamaba vía `.apply(..., axis=1)` sobre el
+    DataFrame COMPLETO en ~17 puntos del código (metrics.py + casi todos los
+    módulos de `analytics/*.py`) — cada rerun de Streamlit (p.ej. al cambiar
+    el mes del filtro) repetía ese recorrido fila-por-fila decenas de veces
+    sobre miles de leads, lo cual era el principal cuello de botella de
+    rendimiento. Como la regla es una simple pertenencia a un set, es
+    trivialmente vectorizable sin ningún riesgo de cambiar el resultado.
+    """
+    if df.empty or "estado" not in df.columns:
+        return pd.Series(True, index=df.index)
+    estado = df["estado"].apply(_safe_str).str.strip().str.lower()
+    return ~estado.isin(CIERRE_INVALID_ESTADOS)
+
+
+def get_mask(df: pd.DataFrame, column: str, func) -> pd.Series:
+    """Devuelve la columna precomputada `column` si ya existe en `df` (ver
+    `precompute_derived_columns`); si no, la calcula al vuelo con `func`
+    (row-wise, vía `.apply(func, axis=1)`, comportamiento idéntico al de
+    siempre — usado como fallback para DataFrames de test que no pasan por
+    el pipeline de carga real).
+
+    No reimplementa ninguna regla de negocio: solo evita recomputar
+    predicados costosos (`is_marketing`, `is_tiktok`, etc.) más de una vez
+    sobre el mismo DataFrame.
+    """
+    if column in df.columns:
+        return df[column]
+    if df.empty:
+        return pd.Series([], dtype=bool, index=df.index)
+    return df.apply(func, axis=1)
+
+
 def is_tiktok(row) -> bool:
     """True si el lead viene de TikTok (Canal offline u Origen de la pauta)."""
     canal_off = _safe_str(row.get("Canal offline", "")).strip().lower()
@@ -289,6 +325,51 @@ def is_marketing(row) -> bool:
     return False
 
 
+# Columnas booleanas derivadas que `precompute_derived_columns` calcula UNA
+# SOLA VEZ por archivo cargado (ver `src/ui/upload.py`), para que el resto
+# del código las reutilice via `get_mask` en lugar de recorrer el DataFrame
+# fila por fila cada vez que compute_all_metrics/breakdowns/secciones se
+# vuelven a ejecutar en cada rerun de Streamlit.
+DERIVED_MASK_COLUMNS: dict[str, "callable"] = {
+    "_is_marketing": is_marketing,
+    "_is_tiktok": is_tiktok,
+    "_is_organico": is_organico,
+    "_is_cesar_augusto": is_cesar_augusto,
+    "_is_paid_network": _is_paid_network,
+}
+
+
+def precompute_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Calcula una sola vez los predicados costosos (is_marketing, is_tiktok,
+    is_organico, is_cesar_augusto, _is_paid_network, validez de cierre y
+    asesor comercial) y los guarda como columnas booleanas nuevas.
+
+    Se llama UNA VEZ al cargar el archivo (cacheado en `src/ui/upload.py`
+    via `st.cache_data`), no en cada rerun. `compute_all_metrics` y los
+    módulos de `analytics/*.py` leen estas columnas a través de `get_mask`
+    en vez de recalcular cada predicado con `.apply(func, axis=1)` sobre
+    todo el dataset cada vez que el usuario cambia el filtro de mes u otro
+    widget dispara un rerun — ninguna regla de negocio cambia, solo se deja
+    de repetir el mismo cálculo.
+    """
+    out = df.copy()
+    if out.empty:
+        for col in DERIVED_MASK_COLUMNS:
+            out[col] = pd.Series(dtype=bool)
+        out["_is_valid_closure_estado"] = pd.Series(dtype=bool)
+        out["_is_asesor_comercial"] = pd.Series(dtype=bool)
+        return out
+
+    for col, func in DERIVED_MASK_COLUMNS.items():
+        out[col] = out.apply(func, axis=1)
+    out["_is_valid_closure_estado"] = valid_closure_estado_mask(out)
+    if "propietario" in out.columns:
+        out["_is_asesor_comercial"] = out["propietario"].apply(is_asesor_comercial)
+    else:
+        out["_is_asesor_comercial"] = False
+    return out
+
+
 def valid_closure_event_mask(df: pd.DataFrame, date_col: str, year: int, month: int) -> pd.Series:
     """Máscara booleana: True si `date_col` cae en (year, month) Y el cierre es válido
     (estado != "inactivo")."""
@@ -296,24 +377,26 @@ def valid_closure_event_mask(df: pd.DataFrame, date_col: str, year: int, month: 
         return pd.Series(False, index=df.index)
     s = pd.to_datetime(df[date_col], errors="coerce")
     in_month = (s.dt.year == year) & (s.dt.month == month)
-    valid = df.apply(_is_valid_closure_estado, axis=1)
+    valid = df["_is_valid_closure_estado"] if "_is_valid_closure_estado" in df.columns else valid_closure_estado_mask(df)
     return in_month & valid
 
 
 def _sum_valid_closures(
-    df_full: pd.DataFrame, year: int, month: int, predicate=None
+    df_full: pd.DataFrame, year: int, month: int, mask: pd.Series | None = None
 ) -> int:
     """Suma cierres válidos (estado != "inactivo") del mes en las 4 columnas de
-    fecha de cierre, opcionalmente filtrados por `predicate(row) -> bool`."""
+    fecha de cierre, opcionalmente restringidos a `mask` (máscara booleana ya
+    calculada sobre `df_full`, p.ej. is_marketing/is_organico/is_tiktok o su
+    complemento). Antes recibía un `predicate(row)` y lo evaluaba con
+    `.apply(axis=1)` una vez por cada una de las 4 columnas de fecha —
+    redundante, porque el predicado no depende de la columna. Pasar la
+    máscara ya calculada evita recomputar el mismo predicado 4 veces."""
     total = 0
     for col in CLOSE_DATE_COLS:
-        mask = valid_closure_event_mask(df_full, col, year, month)
-        if not mask.any():
-            continue
-        sub = df_full[mask]
-        if predicate is not None:
-            sub = sub[sub.apply(predicate, axis=1)]
-        total += len(sub)
+        m = valid_closure_event_mask(df_full, col, year, month)
+        if mask is not None:
+            m = m & mask
+        total += int(m.sum())
     return total
 
 
@@ -389,10 +472,10 @@ def compute_all_metrics(
     # --- Clasificación de leads del período ---
     creados = len(df_period)
 
-    mkt_mask = df_period.apply(is_marketing, axis=1)
-    tiktok_mask = df_period.apply(is_tiktok, axis=1)
-    organico_mask = df_period.apply(is_organico, axis=1)
-    cesar_mask = df_period.apply(is_cesar_augusto, axis=1)
+    mkt_mask = get_mask(df_period, "_is_marketing", is_marketing)
+    tiktok_mask = get_mask(df_period, "_is_tiktok", is_tiktok)
+    organico_mask = get_mask(df_period, "_is_organico", is_organico)
+    cesar_mask = get_mask(df_period, "_is_cesar_augusto", is_cesar_augusto)
 
     # "Leads generales" de Orgánico/TikTok excluyen a César Augusto: sus leads
     # entran completos vía Suma 1 (ver abajo), sin dividirse entre las
@@ -412,7 +495,9 @@ def compute_all_metrics(
     leads_organico_tiktok = leads_organico + leads_tiktok + int(cesar_mask.sum())
 
     # --- Asignados: solo Asesores Comerciales ---
-    if "propietario" in df_period.columns:
+    if "_is_asesor_comercial" in df_period.columns:
+        asignado_mask = df_period["_is_asesor_comercial"]
+    elif "propietario" in df_period.columns:
         asignado_mask = df_period["propietario"].apply(is_asesor_comercial)
     else:
         asignado_mask = pd.Series(False, index=df_period.index)
@@ -443,16 +528,17 @@ def compute_all_metrics(
     # cierres_tiktok_valid se siguen calculando como desgloses informativos
     # (subconjuntos de cierres_marketing), pero NO se vuelven a sumar en los
     # totales de abajo — sumarlos de nuevo contaría esos cierres dos veces.
-    cierres_marketing = _sum_valid_closures(df_full, year, month, is_marketing)
-    cierres_organico_valid = _sum_valid_closures(df_full, year, month, is_organico)
-    cierres_tiktok_valid = _sum_valid_closures(df_full, year, month, is_tiktok)
+    mkt_mask_full = get_mask(df_full, "_is_marketing", is_marketing)
+    organico_mask_full = get_mask(df_full, "_is_organico", is_organico)
+    tiktok_mask_full = get_mask(df_full, "_is_tiktok", is_tiktok)
+    # Equivale a "not is_marketing(row)": is_marketing ya incluye TikTok/Orgánico,
+    # así que Referido puro es exactamente el complemento de los 3.
+    referido_mask_full = ~(mkt_mask_full | organico_mask_full | tiktok_mask_full)
 
-    def _is_referido(row) -> bool:
-        # Equivale a "not is_marketing(row)": is_marketing ya incluye
-        # TikTok/Orgánico, así que Referido puro es exactamente su complemento.
-        return not (is_marketing(row) or is_organico(row) or is_tiktok(row))
-
-    cierres_referidos = _sum_valid_closures(df_full, year, month, _is_referido)
+    cierres_marketing = _sum_valid_closures(df_full, year, month, mkt_mask_full)
+    cierres_organico_valid = _sum_valid_closures(df_full, year, month, organico_mask_full)
+    cierres_tiktok_valid = _sum_valid_closures(df_full, year, month, tiktok_mask_full)
+    cierres_referidos = _sum_valid_closures(df_full, year, month, referido_mask_full)
     # "No pauta" = Referidos puros únicamente (TikTok/Orgánico ya son Pauta).
     cierres_no_pauta = cierres_referidos
 
@@ -487,14 +573,14 @@ def compute_all_metrics(
     cierres_4 = int(valid_closure_event_mask(df_full, "Fecha de 4to cierre", year, month).sum())
     cierres_adicionales = cierres_2 + cierres_3 + cierres_4
 
-    paid_mask_full = df_full.apply(_is_paid_network, axis=1)
+    paid_mask_full = get_mask(df_full, "_is_paid_network", _is_paid_network)
     df_paid_full = df_full[paid_mask_full]
     cierres_por_pautas = sum(
         int(valid_closure_event_mask(df_paid_full, col, year, month).sum())
         for col in CLOSE_DATE_COLS
     )
 
-    es_pauta = df_period.apply(_is_paid_network, axis=1)
+    es_pauta = get_mask(df_period, "_is_paid_network", _is_paid_network)
     leads_redes = int(es_pauta.sum())
     cierres_redes = cierres_por_pautas
 
@@ -506,7 +592,7 @@ def compute_all_metrics(
         mask_1ro = valid_closure_event_mask(df_full, "Fecha de cierre", year, month)
         leads_1ro = df_full[mask_1ro]
         if not leads_1ro.empty:
-            is_mkt_1ro = leads_1ro.apply(is_marketing, axis=1)
+            is_mkt_1ro = mkt_mask_full.loc[leads_1ro.index]
             cierres_pauta_primer = int(is_mkt_1ro.sum())
             cierres_referido_primer = int((~is_mkt_1ro).sum())
         else:
@@ -528,7 +614,7 @@ def compute_all_metrics(
         _sub = df_full[_mask]
         if _sub.empty:
             continue
-        _is_mkt = _sub.apply(is_marketing, axis=1)
+        _is_mkt = mkt_mask_full.loc[_sub.index]
         cierres_adicionales_pauta += int(_is_mkt.sum())
         cierres_adicionales_referido += int((~_is_mkt).sum())
 

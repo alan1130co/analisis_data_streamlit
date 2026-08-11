@@ -1,5 +1,5 @@
 import pandas as pd
-from src.analytics.metrics import is_marketing, _is_valid_closure_estado
+from src.analytics.metrics import is_marketing, get_mask, valid_closure_estado_mask
 
 
 def closures_by_video(
@@ -24,7 +24,7 @@ def closures_by_video(
     # Cierres pauta del mes desde Clientify
     cierres_pauta_total = 0
     if df_clientify is not None and not df_clientify.empty:
-        active = df_clientify.apply(_is_valid_closure_estado, axis=1)
+        active = valid_closure_estado_mask(df_clientify)
         for col in ["Fecha de cierre", "Fecha de segundo cierre",
                     "Fecha de tercer cierre", "Fecha de 4to cierre"]:
             if col not in df_clientify.columns:
@@ -34,7 +34,7 @@ def closures_by_video(
             sub = df_clientify[m2]
             if sub.empty:
                 continue
-            cierres_pauta_total += int(sub.apply(is_marketing, axis=1).sum())
+            cierres_pauta_total += int(get_mask(sub, "_is_marketing", is_marketing).sum())
 
     agg = meta_mes.groupby("Nombre del anuncio").agg({
         "Importe gastado (USD)": "sum",

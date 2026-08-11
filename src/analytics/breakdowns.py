@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import is_marketing, is_qualified_mask, _safe_str, _is_valid_closure_estado
+from src.analytics.metrics import (
+    is_marketing,
+    is_qualified_mask,
+    _safe_str,
+    get_mask,
+    valid_closure_estado_mask,
+)
 from src.config.settings import REFERIDO_PREFIX
 
 _CLOSE_COLS = [
@@ -65,13 +71,13 @@ def efficiency_by_advisor(
         if sub.empty:
             return result
         if filter_marketing is not None:
-            is_mkt = sub.apply(is_marketing, axis=1)
+            is_mkt = get_mask(sub, "_is_marketing", is_marketing)
             sub = sub[is_mkt] if filter_marketing else sub[~is_mkt]
         for prop, cant in sub["propietario"].value_counts().items():
             result[prop] = result.get(prop, 0) + int(cant)
         return result
 
-    is_mkt_period = df_period.apply(is_marketing, axis=1)
+    is_mkt_period = get_mask(df_period, "_is_marketing", is_marketing)
     df_pauta = df_period[is_mkt_period].copy()
     df_referido = df_period[~is_mkt_period].copy()
 
@@ -187,8 +193,8 @@ def pauta_vs_referidos(
     if df_period.empty:
         return empty
 
-    mkt_mask_full = df_full.apply(is_marketing, axis=1)
-    active_full = df_full.apply(_is_valid_closure_estado, axis=1)
+    mkt_mask_full = get_mask(df_full, "_is_marketing", is_marketing)
+    active_full = valid_closure_estado_mask(df_full)
 
     pauta_n = 0
     ref_n = 0
@@ -239,32 +245,30 @@ def cierres_por_canal(
     if df_period.empty:
         return empty
 
-    active_full = df_full.apply(_is_valid_closure_estado, axis=1)
+    active_full = valid_closure_estado_mask(df_full)
+    mkt_mask_full = get_mask(df_full, "_is_marketing", is_marketing)
 
-    rows = []
+    canales = []
     for col in _CLOSE_COLS:
         if col not in df_full.columns:
             continue
         s = pd.to_datetime(df_full[col], errors="coerce")
         mask = (s.dt.year == year) & (s.dt.month == month) & active_full
+        if team == "Marketing (pautas)":
+            mask = mask & mkt_mask_full
+        elif team == "Referidos":
+            mask = mask & ~mkt_mask_full
         sub = df_full[mask]
-        for _, row in sub.iterrows():
-            canal = _safe_str(row.get("Canal offline", "")).strip()
-            if not canal or canal.lower() in {"nan", "none"}:
-                canal = "Sin canal (referido)"
+        if sub.empty:
+            continue
+        canal = sub.get("Canal offline", pd.Series("", index=sub.index)).apply(_safe_str).str.strip()
+        canal = canal.mask(canal.eq("") | canal.str.lower().isin({"nan", "none"}), "Sin canal (referido)")
+        canales.append(canal)
 
-            es_marketing = is_marketing(row)
-            if team == "Marketing (pautas)" and not es_marketing:
-                continue
-            if team == "Referidos" and es_marketing:
-                continue
-
-            rows.append({"Canal": canal})
-
-    if not rows:
+    if not canales:
         return empty
 
-    out = pd.DataFrame(rows)["Canal"].value_counts().reset_index()
+    out = pd.concat(canales).value_counts().reset_index()
     out.columns = ["Canal", "Cantidad"]
     total = int(out["Cantidad"].sum())
     out["Porcentaje"] = (out["Cantidad"] / total * 100).round(1)

@@ -20,9 +20,29 @@ class ExcelContactsLoader(ContactsDataSource):
         return Path(self._name).name
 
     def load(self) -> pd.DataFrame:
-        df = pd.read_excel(self.file, sheet_name=self.sheet_name)
+        df = self._read_excel()
         df = self._normalize(df)
         return df
+
+    def _read_excel(self) -> pd.DataFrame:
+        """Lee el Excel con el motor más rápido disponible.
+
+        `python-calamine` (Rust) parsea .xlsx varias veces más rápido que
+        openpyxl, que es puro Python y es el cuello de botella dominante al
+        cargar un archivo de varios MB. Si el paquete no está instalado o el
+        archivo es .xls (no soportado por calamine), cae a los motores por
+        defecto de pandas (openpyxl / xlrd) sin cambiar ningún resultado.
+        """
+        name = str(self._name).lower()
+        if name.endswith(".xlsx") or not name.endswith(".xls"):
+            try:
+                if hasattr(self.file, "seek"):
+                    self.file.seek(0)
+                return pd.read_excel(self.file, sheet_name=self.sheet_name, engine="calamine")
+            except (ImportError, ValueError):
+                if hasattr(self.file, "seek"):
+                    self.file.seek(0)
+        return pd.read_excel(self.file, sheet_name=self.sheet_name)
 
     @staticmethod
     def _normalize(df: pd.DataFrame) -> pd.DataFrame:

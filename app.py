@@ -22,6 +22,7 @@ from src.analytics.filters import (
 
 from src.ui.sections.pauta_vs_referidos import render_pauta_vs_referidos
 from src.ui.sections.cierres_por_canal import render_cierres_por_canal
+from src.ui.sections.closures_by_campaign import render_closures_by_campaign
 from src.ui.sections.funnel import render_funnel
 from src.ui.sections.daily_sales import render_daily_sales
 from src.ui.sections.comparison import render_comparison
@@ -36,8 +37,9 @@ from src.ui.sections.closures_by_sector import render_closures_by_sector
 from src.ui.sections.closures_by_age import render_closures_by_age
 from src.ui.sections.closures_by_publication import render_closures_by_publication
 from src.ui.sections.closures_by_gender import render_closures_by_gender
-from src.ui.sections.investment_by_set import render_investment_by_set
-from src.ui.sections.cp_attribution import render_cp_attribution
+from src.ui.sections.closures_vs_second_closures import render_closures_vs_second_closures
+from src.ui.sections.closures_by_channel_over_time import render_closures_by_channel_over_time
+from src.ui.sections.ad_spend import render_ad_spend
 
 
 def main():
@@ -85,41 +87,14 @@ def main():
                 st.rerun()
 
         st.markdown("---")
-        st.markdown("### 📊 Conjuntos de anuncios (opcional)")
-        meta_sets_file = st.file_uploader(
-            "Cargar CSV de Conjuntos de Meta",
-            type=["csv"],
-            key="meta_sets_uploader",
-            help="Export del reporte 'Conjuntos de anuncios' desde Meta Ads Manager.",
+        st.markdown("### 💰 Facturación / Inversión (Meta Ads)")
+        meta_billing_file = st.file_uploader(
+            "Cargar reporte de Facturación/Inversión (Meta Ads)",
+            type=["csv", "xls", "xlsx"],
+            key="meta_billing_uploader",
+            help="Reporte de facturación/inversión exportado desde Meta Ads Manager (columnas Fecha, Divisa, Importe).",
         )
-
-        df_meta_sets = None
-        if meta_sets_file is not None:
-            from src.data_sources.meta_sets_loader import MetaSetsLoader
-            try:
-                df_meta_sets = MetaSetsLoader(meta_sets_file).load()
-                st.success(f"✅ {len(df_meta_sets)} conjuntos cargados")
-            except Exception as e:
-                st.error(f"Error al cargar el CSV: {e}")
-
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 🎯 Atribución REAL (CP de Meta)")
-        cp_files = st.sidebar.file_uploader(
-            "Cargar CSV de CP de Meta (varios archivos)",
-            type=["csv"],
-            key="cp_uploader",
-            accept_multiple_files=True,  # ← CRUCIAL: permite múltiples
-            help="Descargá desde Meta Ads Manager → Conjuntos → cada Video → Descargar CP. Subí todos juntos.",
-        )
-
-        df_cp = None
-        if cp_files:
-            from src.data_sources.meta_cp_loader import MetaCPLoader
-            try:
-                df_cp = MetaCPLoader(cp_files).load()
-                st.sidebar.success(f"✅ {len(df_cp)} CP cargados de {len(cp_files)} archivos")
-            except Exception as e:
-                st.sidebar.error(f"Error al cargar CP: {e}")
+        st.session_state.meta_billing_file = meta_billing_file
 
         st.divider()
         equipo = "todos"
@@ -166,6 +141,8 @@ def main():
     st.markdown("---")
     render_cierres_por_canal(df_current, df_full, selected.year, selected.month, team=equipo)
     st.markdown("---")
+    render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
+    st.markdown("---")
     render_funnel(df_current, df_full, selected.year, selected.month)
     st.markdown("---")
     render_daily_sales(df_full, selected)
@@ -175,6 +152,12 @@ def main():
     render_comparison(df_unfiltered, selected)
     st.markdown("---")
     render_trend(df_unfiltered, default_month=selected)
+    st.markdown("---")
+    render_closures_vs_second_closures(df_unfiltered)
+    st.markdown("---")
+    render_closures_by_channel_over_time(df_unfiltered)
+    st.markdown("---")
+    render_ad_spend(st.session_state.get("meta_billing_file"))
     st.markdown("---")
     render_leads_summary(df_unfiltered, default_month=selected)
     st.markdown("---")
@@ -204,14 +187,12 @@ def main():
     st.markdown("---")
     render_closures_by_publication(df_unfiltered, selected.year, selected.month)
 
-    st.markdown("---")
-    render_investment_by_set(df_meta_sets, df, selected.year, selected.month)
-
-    st.markdown("---")
-    render_cp_attribution(df_cp, df, selected.year, selected.month)
-
     with st.expander("Ver datos del período"):
-        st.dataframe(df_current, use_container_width=True)
+        # Las columnas "_is_*" son derivadas internas precalculadas por
+        # precompute_derived_columns (ver src/ui/upload.py) para acelerar los
+        # cálculos — no son datos del Excel original, no deben mostrarse acá.
+        cols_visibles = [c for c in df_current.columns if not c.startswith("_is_")]
+        st.dataframe(df_current[cols_visibles], use_container_width=True)
 
 
 if __name__ == "__main__":

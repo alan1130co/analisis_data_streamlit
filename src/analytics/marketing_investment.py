@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import pandas as pd
-from src.analytics.metrics import is_marketing, _is_valid_closure_estado
+from src.analytics.metrics import is_marketing, get_mask, valid_closure_estado_mask
 
 
 @dataclass
@@ -82,10 +82,10 @@ def compute_investment_metrics(
         creado = pd.to_datetime(df_clientify["creado"], errors="coerce")
         mask_creado = (creado.dt.year == year) & (creado.dt.month == month)
         df_periodo = df_clientify[mask_creado]
-        leads_pauta = 0 if df_periodo.empty else int(df_periodo.apply(is_marketing, axis=1).sum())
+        leads_pauta = 0 if df_periodo.empty else int(get_mask(df_periodo, "_is_marketing", is_marketing).sum())
 
         cierres_pauta = 0
-        active_full = df_clientify.apply(_is_valid_closure_estado, axis=1)
+        active_full = valid_closure_estado_mask(df_clientify)
         for col in ["Fecha de cierre", "Fecha de segundo cierre",
                     "Fecha de tercer cierre", "Fecha de 4to cierre"]:
             if col not in df_clientify.columns:
@@ -95,7 +95,7 @@ def compute_investment_metrics(
             sub = df_clientify[mask]
             if sub.empty:
                 continue
-            cierres_pauta += int(sub.apply(is_marketing, axis=1).sum())
+            cierres_pauta += int(get_mask(sub, "_is_marketing", is_marketing).sum())
 
     costo_por_lead = (gasto / leads_pauta) if leads_pauta else 0.0
     costo_por_cierre = (gasto / cierres_pauta) if cierres_pauta else 0.0

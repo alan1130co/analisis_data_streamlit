@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import is_qualified_mask, is_marketing, _is_valid_closure_estado
+from src.analytics.metrics import is_qualified_mask, is_marketing, valid_closure_estado_mask, get_mask
 
 _CLOSE_COLS = [
     "Fecha de cierre",
@@ -37,8 +37,13 @@ def _count_closures_in_month(
     columnas de fecha de cierre, opcionalmente filtrados por `predicate(row) -> bool`."""
     if df.empty:
         return 0
-    active = df.apply(_is_valid_closure_estado, axis=1)
-    pred_mask = df.apply(predicate, axis=1) if predicate is not None else pd.Series(True, index=df.index)
+    active = valid_closure_estado_mask(df)
+    if predicate is None:
+        pred_mask = pd.Series(True, index=df.index)
+    elif predicate is is_marketing:
+        pred_mask = get_mask(df, "_is_marketing", is_marketing)
+    else:
+        pred_mask = df.apply(predicate, axis=1)
     total = 0
     for col in _CLOSE_COLS:
         if col not in df.columns:

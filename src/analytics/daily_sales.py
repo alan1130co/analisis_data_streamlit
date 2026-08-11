@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.analytics.metrics import _is_valid_closure_estado
+from src.analytics.metrics import valid_closure_estado_mask
 
 _CLOSE_COLS = [
     "Fecha de cierre",
@@ -28,7 +28,7 @@ def daily_sales_total(
     if advisors and "propietario" in df.columns:
         df = df[df["propietario"].isin(advisors)]
 
-    active = df.apply(_is_valid_closure_estado, axis=1) if not df.empty else pd.Series(dtype=bool)
+    active = valid_closure_estado_mask(df)
     records: list = []
     for col in _CLOSE_COLS:
         if col not in df.columns:
@@ -60,7 +60,7 @@ def daily_sales_by_advisor(
     if advisors and "propietario" in df.columns:
         df = df[df["propietario"].isin(advisors)]
 
-    active = df.apply(_is_valid_closure_estado, axis=1) if not df.empty else pd.Series(dtype=bool)
+    active = valid_closure_estado_mask(df)
     parts: list[pd.DataFrame] = []
     for col in _CLOSE_COLS:
         if col not in df.columns:

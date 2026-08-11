@@ -1,7 +1,7 @@
 import unicodedata
 import pandas as pd
 import gender_guesser.detector as gender
-from src.analytics.metrics import is_marketing, _is_valid_closure_estado
+from src.analytics.metrics import is_marketing, valid_closure_estado_mask
 
 
 _detector = gender.Detector(case_sensitive=False)
@@ -129,7 +129,7 @@ def closures_by_gender(
         "Fecha de tercer cierre", "Fecha de 4to cierre",
     ]
 
-    active = df_full.apply(_is_valid_closure_estado, axis=1)
+    active = valid_closure_estado_mask(df_full)
     rows = []
     for col in closure_cols:
         if col not in df_full.columns:
