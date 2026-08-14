@@ -112,8 +112,9 @@ def test_calificados_se_calcula_sobre_asignados_no_sobre_creados():
     assert m.calificados + m.no_calificados == m.asignados
 
 
-def test_calificados_motivo_vacio_cuenta_como_calificado():
-    """Motivo None/vacío es calificado porque el lead aún no fue clasificado."""
+def test_calificados_motivo_vacio_no_cuenta_como_calificado():
+    """Regla estricta (2026-08-12c): motivo vacío/None sin cierre real ya NO
+    es calificado — antes contaba por defecto como 'aún sin clasificar'."""
     _base = {
         "canal online": "inbox", "Canal offline": None, "Origen de la pauta": None,
         "Fecha de cierre": pd.NaT, "Fecha de segundo cierre": pd.NaT,
@@ -126,7 +127,7 @@ def test_calificados_motivo_vacio_cuenta_como_calificado():
          "Motivo de no cierre": "", "Cantidad de cierres": None},
     ])
     mask = is_qualified_mask(df)
-    assert mask.all(), "Motivos vacíos/None deben ser calificados"
+    assert not mask.any(), "Motivos vacíos/None sin cierre real NO deben ser calificados"
 
 
 def test_calificados_motivo_unqualified_no_cuenta_como_calificado():
@@ -411,11 +412,17 @@ def test_is_cesar_augusto():
 # Leads Pauta / Orgánico / TikTok + filtro César Augusto
 # ---------------------------------------------------------------------------
 
-def _lead(canal_offline, propietario, estado="en transito", creado=datetime(2026, 4, 1), origen=None):
+def _lead(canal_offline, propietario, estado="en transito", creado=datetime(2026, 4, 1), origen=None,
+          motivo="cliente potencial"):
+    """`motivo` por defecto viene diligenciado ("cliente potencial") para que
+    los tests de clasificación por canal (Pauta/Orgánico/TikTok/César) no se
+    vean afectados por la regla de "motivo diligenciado" de
+    `leads_organico`/`leads_tiktok` (ver `has_motivo_diligenciado_mask`) a
+    menos que la prueba pase `motivo=None` explícitamente para ese caso."""
     return {
         "creado": creado, "propietario": propietario, "estado": estado,
         "canal online": None, "Canal offline": canal_offline, "Origen de la pauta": origen,
-        "Motivo de no cierre": None, "Cantidad de cierres": None,
+        "Motivo de no cierre": motivo, "Cantidad de cierres": None,
         "Fecha de cierre": pd.NaT, "Fecha de segundo cierre": pd.NaT,
         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
     }
@@ -480,18 +487,250 @@ def test_leads_pauta_no_afectado_por_filtro_cesar():
 
 
 # ---------------------------------------------------------------------------
+# Regla: leads Orgánico/TikTok solo cuentan si "Motivo de no cierre" viene
+# diligenciado (no aplica a Suma 1 / César, ni a leads_pauta, ni a
+# asignados_organico/asignados_tiktok — ver has_motivo_diligenciado_mask)
+# ---------------------------------------------------------------------------
+
+def test_leads_organico_con_motivo_vacio_no_cuenta():
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo=None),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 0
+    assert m.leads_organico_tiktok == 0
+
+
+def test_leads_tiktok_con_motivo_vacio_no_cuenta():
+    df = pd.DataFrame([
+        _lead("Tiktok", "ana", motivo=None),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_tiktok == 0
+    assert m.leads_organico_tiktok == 0
+
+
+@pytest.mark.parametrize("motivo_vacio", ["", "nan", "none", "sin diligenciar", "NaN", "  "])
+def test_leads_organico_variantes_de_motivo_vacio_no_cuentan(motivo_vacio):
+    """Mismo set de valores 'vacíos' que usa is_qualified_mask (case/espacio
+    insensible), para que el criterio de 'diligenciado' sea consistente."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo=motivo_vacio),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 0
+
+
+def test_leads_organico_tiktok_motivo_mixto_solo_cuenta_los_diligenciados():
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo="cliente potencial"),   # cuenta
+        _lead("Orgánico", "ana", motivo=None),                     # no cuenta
+        _lead("Tiktok", "carlos", motivo="no se logró contactar"), # cuenta
+        _lead("Tiktok", "juan", motivo=""),                        # no cuenta
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 1
+    assert m.leads_tiktok == 1
+    assert m.leads_organico_tiktok == 2
+
+
+def test_leads_organico_tiktok_cesar_no_requiere_motivo_diligenciado():
+    """Suma 1 (César) mantiene su regla 'sin importar canal ni estado' —
+    el nuevo filtro de motivo diligenciado NO se le aplica, solo a la
+    población general (Suma 2) de Orgánico/TikTok."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "Cesar Augusto Perez Tafur", motivo=None),
+        _lead("Tiktok", "Cesar Augusto Perez Tafur", motivo=""),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico_tiktok == 2
+    assert m.leads_organico == 0
+    assert m.leads_tiktok == 0
+
+
+def test_asignados_organico_no_requiere_motivo_diligenciado():
+    """El nuevo filtro solo restringe leads_organico/leads_tiktok (la
+    tarjeta 'Leads Orgánicos y TikTok'), no asignados_organico/asignados_tiktok."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo=None),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 0
+    assert m.asignados_organico == 1
+
+
+# ---------------------------------------------------------------------------
+# Regla 2026-08-12c: "Calificados" es una regla ESTRICTA y SIN EXCEPCIONES —
+# reemplaza toda la lógica de excepciones por canal/asesor de iteraciones
+# anteriores (Orgánico/TikTok, redes sueltas, exención de César Augusto).
+# Calificado ÚNICAMENTE si el motivo está en QUALIFIED_MOTIVES o hay un
+# cierre real (Cantidad de cierres >= 1). Cualquier otro caso — motivo
+# vacío/None/'sin diligenciar', o motivo en UNQUALIFIED_MOTIVES, sin cierre
+# — es No calificado, sin importar canal ni asesor.
+# ---------------------------------------------------------------------------
+
+def test_calificados_motivo_vacio_no_cuenta_sin_importar_canal_ni_asesor():
+    """Motivo vacío/None/'sin diligenciar' sin cierre real → SIEMPRE No
+    calificado, para cualquier canal (Orgánico, TikTok, redes sueltas, Pauta
+    paga oficial, Llamada, Formulario, Referido) y cualquier asesor."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo=None),
+        _lead("Tiktok", "ana", motivo=""),
+        _lead("Facebook", "carlos", motivo=None),            # canal social suelto
+        _lead("Clientify - Facebook", "juan", motivo=None),  # pauta paga oficial
+        _lead("Llamada Entrante", "maria", motivo=None),
+        _lead("Formulario web", "pedro", motivo="sin diligenciar"),
+        _lead("Referido externo", "laura", motivo=None),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.calificados == 0
+    assert m.no_calificados == 7
+
+
+def test_calificados_motivo_qualified_diligenciado_si_cuenta():
+    """Motivo en QUALIFIED_MOTIVES, diligenciado, sí califica — sin importar
+    el canal."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo="cliente potencial"),
+        _lead("Clientify - Facebook", "ana", motivo="cliente de seguimiento"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.calificados == 2
+    assert m.no_calificados == 0
+
+
+def test_calificados_motivo_unqualified_no_cuenta_sin_importar_canal():
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo="no se logró contactar"),
+        _lead("Clientify - Facebook", "ana", motivo="su caso no aplicaba"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.calificados == 0
+    assert m.no_calificados == 2
+
+
+def test_calificados_cierre_real_cuenta_sin_importar_motivo_ni_canal():
+    """Un cierre real siempre califica, incluso con motivo vacío."""
+    lead = _lead("Orgánico", "sofia", motivo=None)
+    lead["Cantidad de cierres"] = 1.0
+    df = pd.DataFrame([lead])
+    m = compute_all_metrics(df, df)
+    assert m.calificados == 1
+    assert m.no_calificados == 0
+
+
+def test_calificados_cesar_ya_no_tiene_excepcion():
+    """La regla estricta ya NO exime a César Augusto: motivo vacío sin
+    cierre real también lo manda a No calificados, igual que cualquier otro
+    asesor. Esta exención existía en iteraciones anteriores de la regla de
+    Calificados y fue eliminada explícitamente — distinto de su regla de
+    clasificación en la bolsa 'Leads Orgánicos y TikTok' (Suma 1, 'cuenta
+    sin importar canal ni estado'), que NO se tocó en este cambio."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "Cesar Augusto Perez Tafur", motivo=None),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.calificados == 0
+    assert m.no_calificados == 1
+
+
+def test_leads_organico_tiktok_sigue_exigiendo_organico_estricto_y_motivo():
+    """Rule 1 (sin cambios en esta iteración): la bolsa 'Leads Orgánicos y
+    TikTok' exige ser ESTRICTAMENTE Orgánico/TikTok Y tener el motivo
+    diligenciado. Un canal social suelto (Facebook/Instagram) no cuenta ahí
+    aunque venga diligenciado — solo Orgánico/TikTok literal."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", motivo="cliente potencial"),   # sí cuenta
+        _lead("Orgánico", "ana", motivo=None),                     # no cuenta: sin motivo
+        _lead("Facebook", "carlos", motivo="cliente potencial"),   # no cuenta: no es Orgánico/TikTok
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 1
+    assert m.leads_organico_tiktok == 1
+    assert m.leads_pauta == 3  # los 3 (Facebook y ambos Orgánico) siguen siendo Pauta
+
+
+# ---------------------------------------------------------------------------
+# Regla 2026-08-12d: la regla de Calificados/Leads Orgánicos y TikTok NO
+# depende del mes — ni `is_qualified_mask` ni `has_motivo_diligenciado_mask`
+# reciben año/mes como parámetro, así que no existe (ni puede existir) un
+# filtro condicional tipo "solo aplica a agosto". Se verifica explícitamente
+# aquí porque el usuario reportó que el acumulado general parecía seguir
+# usando la regla vieja para meses distintos de agosto.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("mes", [
+    datetime(2024, 5, 1),   # FOUNDING_DATE
+    datetime(2025, 1, 1),
+    datetime(2026, 3, 1),
+    datetime(2026, 7, 1),
+    datetime(2026, 8, 1),   # mes en curso (hoy 2026-08-12)
+    datetime(2026, 12, 1),
+])
+def test_calificados_regla_estricta_es_igual_en_cualquier_mes(mes):
+    """Mismo patrón de leads (2 sin motivo/sin cierre → No calificado, 1 con
+    motivo QUALIFIED → Calificado) debe dar el MISMO resultado sin importar
+    el mes de 'creado' — no hay ninguna condición temporal en la regla."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", creado=mes, motivo=None),
+        _lead("Clientify - Facebook", "ana", creado=mes, motivo=None),
+        _lead("Orgánico", "carlos", creado=mes, motivo="cliente potencial"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.calificados == 1, f"Falló para mes={mes}"
+    assert m.no_calificados == 2, f"Falló para mes={mes}"
+
+
+@pytest.mark.parametrize("mes", [
+    datetime(2024, 5, 1), datetime(2026, 1, 1), datetime(2026, 8, 1),
+])
+def test_leads_organico_tiktok_motivo_diligenciado_es_igual_en_cualquier_mes(mes):
+    """La bolsa 'Leads Orgánicos y TikTok' exige motivo diligenciado igual en
+    cualquier mes — no depende de la fecha de 'creado'."""
+    df = pd.DataFrame([
+        _lead("Orgánico", "sofia", creado=mes, motivo=None),           # no cuenta
+        _lead("Tiktok", "ana", creado=mes, motivo="cliente potencial"),  # cuenta
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_organico == 0, f"Falló para mes={mes}"
+    assert m.leads_tiktok == 1, f"Falló para mes={mes}"
+    assert m.leads_organico_tiktok == 1, f"Falló para mes={mes}"
+
+
+def test_is_qualified_mask_no_depende_de_fecha_ni_mes():
+    """Verificación estructural: `is_qualified_mask` solo recibe `df` (ni
+    año ni mes) y su código fuente no contiene ninguna referencia a fechas,
+    'creado', ni nombres de mes — no puede existir un filtro condicional
+    tipo 'if mes == agosto' porque la función no tiene forma de saber en
+    qué mes está evaluando."""
+    import inspect
+    from src.analytics import metrics as metrics_module
+
+    sig = inspect.signature(metrics_module.is_qualified_mask)
+    assert list(sig.parameters) == ["df"], (
+        "is_qualified_mask no debe recibir año/mes como parámetro"
+    )
+    source = inspect.getsource(metrics_module.is_qualified_mask)
+    prohibidos = ["year", "month", "creado", "agosto", "date(", "Timestamp("]
+    encontrados = [p for p in prohibidos if p in source]
+    assert not encontrados, (
+        f"is_qualified_mask no debe depender de fechas/meses, se encontró: {encontrados}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Eficiencias
 # ---------------------------------------------------------------------------
 
 def test_eficiencia_real_calculo_correcto():
     """100 leads pauta asignados a Asesor Comercial, 5 con cierre válido en el mes.
-    Todos calificados (motivo vacío) → eficiencia_real = 5*100/100 = 5.0%."""
+    Todos calificados (motivo QUALIFIED diligenciado) → eficiencia_real = 5*100/100 = 5.0%."""
     leads = []
     for i in range(95):
         leads.append({
             "creado": datetime(2026, 4, 1), "propietario": "asesor", "estado": "en transito",
             "canal online": "paid social", "Canal offline": "clientify - facebook",
-            "Origen de la pauta": "facebook", "Motivo de no cierre": None,
+            "Origen de la pauta": "facebook", "Motivo de no cierre": "cliente potencial",
             "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
             "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
         })
@@ -521,10 +760,11 @@ def test_eficiencia_bruta_formula():
          "Origen de la pauta": "facebook", "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5),
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Orgánico
+        # Orgánico — motivo diligenciado para que cuente en leads_organico
+        # (ver has_motivo_diligenciado_mask); no es el foco de este test.
         {"creado": datetime(2026, 4, 2), "propietario": "ana", "estado": "en transito",
          "canal online": None, "Canal offline": "orgánico",
-         "Origen de la pauta": None, "Motivo de no cierre": None,
+         "Origen de la pauta": None, "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
@@ -661,10 +901,10 @@ def test_eficiencia_real_usa_calificados_del_mes_no_calificados_pauta():
          "Origen de la pauta": "instagram", "Motivo de no cierre": "no se logró contactar",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Referido, calificada (motivo vacío) — infla calificados TOTAL sin ser Pauta
+        # Referido, calificada (motivo QUALIFIED diligenciado) — infla calificados TOTAL sin ser Pauta
         {"creado": datetime(2026, 4, 3), "propietario": "carlos", "estado": "en transito",
          "canal online": "inbox-referral", "Canal offline": "referido - amigo",
-         "Origen de la pauta": None, "Motivo de no cierre": None,
+         "Origen de la pauta": None, "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])
@@ -692,10 +932,10 @@ def test_eficiencia_global_usa_creados_no_calificados():
          "Origen de la pauta": "instagram", "Motivo de no cierre": "no se logró contactar",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Referido, calificada, sin cierre
+        # Referido, calificada (motivo QUALIFIED diligenciado), sin cierre
         {"creado": datetime(2026, 4, 3), "propietario": "carlos", "estado": "en transito",
          "canal online": "inbox-referral", "Canal offline": "referido - amigo",
-         "Origen de la pauta": None, "Motivo de no cierre": None,
+         "Origen de la pauta": None, "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])

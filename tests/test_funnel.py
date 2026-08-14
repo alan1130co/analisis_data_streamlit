@@ -91,14 +91,15 @@ def test_funnel_asesor_sin_cierres_aparece_con_ceros(leads):
 def test_funnel_cierres_pauta_y_totales_y_eficiencias(leads):
     result = funnel_by_advisor(leads, leads, 2026, 4)
     sofia = result[result["Asesor"] == "Sofia"].iloc[0]
-    # Sofia: 2 asignados, 2 calificados (motivo="cliente potencial" y motivo vacío
-    # cuentan ambos como calificados), 1 cierre (facebook → Pauta)
-    assert sofia["Calificados"] == 2
+    # Sofia: 2 asignados. Regla estricta (2026-08-12c): el 1er lead califica
+    # (motivo="cliente potencial", diligenciado); el 3er lead (motivo vacío,
+    # sin cierre) ya NO califica → 1 calificado, no 2. 1 cierre (facebook → Pauta).
+    assert sofia["Calificados"] == 1
     assert sofia["Cierres Pauta"] == 1
     assert sofia["Cierres Totales"] == 1
-    # % Eficiencia Real = (1 * 100) / 2 calificados = 50.0
-    assert sofia["% Eficiencia Real"] == pytest.approx(50.0)
-    # % Efic. Global = (1 * 100) / 2 asignados = 50.0
+    # % Eficiencia Real = (1 * 100) / 1 calificado = 100.0
+    assert sofia["% Eficiencia Real"] == pytest.approx(100.0)
+    # % Efic. Global = (1 * 100) / 2 asignados = 50.0 (no depende de calificados)
     assert sofia["% Efic. Global"] == pytest.approx(50.0)
 
 

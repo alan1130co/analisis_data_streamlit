@@ -1,7 +1,13 @@
 """Tests para el procesamiento de gasto en pauta publicitaria (Meta Ads)."""
 import pandas as pd
 
-from src.analytics.ad_spend import _clean_importe, monthly_ad_spend, prepare_ad_spend
+from src.analytics.ad_spend import (
+    _clean_importe,
+    combine_ad_spend_sources,
+    monthly_ad_spend,
+    monthly_ad_spend_with_period,
+    prepare_ad_spend,
+)
 
 
 def test_clean_importe_formato_europeo():
@@ -95,3 +101,53 @@ def test_monthly_ad_spend_sin_filas_usd_devuelve_vacio():
 def test_monthly_ad_spend_df_vacio():
     out = monthly_ad_spend(pd.DataFrame())
     assert out.empty
+
+
+def test_combine_ad_spend_sources_concatena_varios_archivos():
+    a = pd.DataFrame([{"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "100"}])
+    b = pd.DataFrame([{"Fecha": "02/04/2026", "Divisa": "USD", "Importe": "200"}])
+    out = combine_ad_spend_sources([a, b])
+    assert len(out) == 2
+
+
+def test_combine_ad_spend_sources_deduplica_por_id_transaccion():
+    a = pd.DataFrame([
+        {"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "100", "Identificador de la transacción": "TX1"},
+        {"Fecha": "02/04/2026", "Divisa": "USD", "Importe": "200", "Identificador de la transacción": "TX2"},
+    ])
+    # b (reporte nuevo) se solapa con TX2 del histórico
+    b = pd.DataFrame([
+        {"Fecha": "02/04/2026", "Divisa": "USD", "Importe": "200", "Identificador de la transacción": "TX2"},
+        {"Fecha": "03/04/2026", "Divisa": "USD", "Importe": "300", "Identificador de la transacción": "TX3"},
+    ])
+    out = combine_ad_spend_sources([a, b])
+    assert len(out) == 3
+    assert sorted(out["Identificador de la transacción"]) == ["TX1", "TX2", "TX3"]
+
+
+def test_combine_ad_spend_sources_ignora_frames_vacios_o_none():
+    a = pd.DataFrame([{"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "100"}])
+    out = combine_ad_spend_sources([a, None, pd.DataFrame()])
+    assert len(out) == 1
+
+
+def test_combine_ad_spend_sources_todos_vacios():
+    out = combine_ad_spend_sources([None, pd.DataFrame()])
+    assert out.empty
+
+
+def test_monthly_ad_spend_with_period_conserva_anio_y_mes_num():
+    df = pd.DataFrame([
+        {"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "100"},
+        {"Fecha": "01/05/2026", "Divisa": "USD", "Importe": "200"},
+    ])
+    out = monthly_ad_spend_with_period(df)
+    assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe"]
+    assert list(out["Año"]) == [2026, 2026]
+    assert list(out["Mes_num"]) == [4, 5]
+
+
+def test_monthly_ad_spend_with_period_df_vacio():
+    out = monthly_ad_spend_with_period(pd.DataFrame())
+    assert out.empty
+    assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe"]

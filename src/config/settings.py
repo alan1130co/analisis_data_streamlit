@@ -123,3 +123,48 @@ CESAR_AUGUSTO_PREFIX = "cesar augusto"
 
 # Fecha de inicio de operaciones de la empresa (año, mes)
 FOUNDING_DATE = (2024, 5)
+
+# --- Honorarios fijos mensuales (USD) — desglose histórico 850 + 650 + 500
+# = 2,000 USD/mes. SUPERADO 2026-08-14: ya no es el valor por defecto de
+# `combine_ad_spend_total_revenue_and_roas` (ver HONORARIOS_EQUIPO_MARKETING_
+# USD y HONORARIOS_EQUIPO_DESDE_* abajo). Se conserva solo como referencia
+# histórica; no queda ninguna llamada en el código que lo use.
+HONORARIOS_FIJOS_MENSUALES_USD = 850 + 650 + 500
+
+# --- Honorarios/sueldos reales del equipo de marketing (USD). Desde
+# 2026-08-14 es el valor por DEFECTO de `combine_ad_spend_total_revenue_and_
+# roas`, usado por `ad_spend_total_roas.py` (gráfica "Gasto total (pauta +
+# honorarios) vs Ingresos por cuota inicial (redes) y ROAS") — pero SOLO se
+# suma al gasto desde HONORARIOS_EQUIPO_DESDE_ANIO/MES en adelante (ver
+# abajo); antes de esa fecha el gasto total de esa gráfica es pauta pura,
+# igual que `ad_spend_roas.py`.
+HONORARIOS_JEFE_CTO_USD = 1000.0
+HONORARIOS_HELEN_USD = 800.0
+HONORARIOS_ALEXA_USD = 800.0
+
+# Salario del usuario, en COP (moneda local) — se convierte a USD con
+# `USD_COP_EXCHANGE_RATE` antes de sumarse al resto del equipo.
+SALARIO_USUARIO_COP = 2_765_489.26
+
+# Tasa de cambio COP -> USD. Constante configurable a mano: este proyecto no
+# tiene una fuente de datos de forex en vivo, así que hay que actualizar
+# este número manualmente si la tasa real cambia. Valor actualizado
+# 2026-08-13 con la TRM oficial de Colombia (Banco de la República) de ese
+# mismo día: 1 USD = 3.123,28 COP. Si la tasa real cambia, actualizar solo
+# este número — el resto del cálculo (SALARIO_USUARIO_USD,
+# HONORARIOS_EQUIPO_MARKETING_USD) se recalcula solo.
+USD_COP_EXCHANGE_RATE = 3123.28
+
+SALARIO_USUARIO_USD = SALARIO_USUARIO_COP / USD_COP_EXCHANGE_RATE
+
+# Total de honorarios + sueldo del equipo de marketing, ya convertido a USD.
+HONORARIOS_EQUIPO_MARKETING_USD = (
+    HONORARIOS_JEFE_CTO_USD + HONORARIOS_HELEN_USD + HONORARIOS_ALEXA_USD + SALARIO_USUARIO_USD
+)
+
+# Mes desde el cual `combine_ad_spend_total_revenue_and_roas` suma
+# HONORARIOS_EQUIPO_MARKETING_USD al gasto en pauta (pedido 2026-08-14: el
+# honorario del equipo empezó a contarse recién en julio 2026, no debe
+# aplicarse retroactivamente al histórico enero 2025 - junio 2026).
+HONORARIOS_EQUIPO_DESDE_ANIO = 2026
+HONORARIOS_EQUIPO_DESDE_MES = 7

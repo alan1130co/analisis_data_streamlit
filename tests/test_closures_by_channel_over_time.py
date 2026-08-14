@@ -6,11 +6,13 @@ import pandas as pd
 from src.analytics.closures_by_channel_over_time import closures_by_channel_over_time
 
 
-def _lead(canal_offline, fecha_cierre=pd.NaT, fecha_segundo=pd.NaT):
+def _lead(canal_offline, fecha_cierre=pd.NaT, fecha_segundo=pd.NaT, fecha_tercer=pd.NaT, fecha_cuarto=pd.NaT):
     return {
         "Canal offline": canal_offline,
         "Fecha de cierre": fecha_cierre,
         "Fecha de segundo cierre": fecha_segundo,
+        "Fecha de tercer cierre": fecha_tercer,
+        "Fecha de 4to cierre": fecha_cuarto,
     }
 
 
@@ -39,10 +41,22 @@ def test_clasificacion_es_insensible_a_mayusculas():
 
 
 def test_referido_redes_cuenta_como_pauta_directa():
-    """'Referido cliente activo - Redes' está en la lista explícita de pauta
-    directa (regla literal pedida), aunque diga 'referido'."""
+    """'Referido cliente activo - Redes' está agregado explícitamente en
+    `redes_channel_mask` (2026-08-13c) — un referido puntual que el negocio
+    igual cuenta como "redes" para el conteo de cierres, aunque no matchee
+    `MARKETING_OFFLINE_CHANNELS` ni Orgánico/TikTok."""
     df = pd.DataFrame([
         _lead("referido cliente activo - redes", fecha_cierre=datetime(2026, 4, 1)),
+    ])
+    out = closures_by_channel_over_time(df)
+    assert out.iloc[0]["Canal"] == "Pauta directa"
+
+
+def test_organico_cuenta_como_pauta_directa():
+    """Regresión: el whitelist anterior no incluía Orgánico en absoluto —
+    la nueva definición unificada (`redes_channel_mask`) sí debe contarlo."""
+    df = pd.DataFrame([
+        _lead("organico", fecha_cierre=datetime(2026, 4, 1)),
     ])
     out = closures_by_channel_over_time(df)
     assert out.iloc[0]["Canal"] == "Pauta directa"
@@ -57,6 +71,25 @@ def test_separa_primer_y_segundo_cierre():
     assert tipos == {"Primer cierre", "Segundo cierre"}
     assert out[out["Tipo"] == "Primer cierre"]["Total cierres"].iloc[0] == 1
     assert out[out["Tipo"] == "Segundo cierre"]["Total cierres"].iloc[0] == 1
+
+
+def test_separa_las_4_etapas_de_cierre():
+    """Pedido 2026-08-14: la gráfica ahora debe incluir Tercer y Cuarto
+    cierre, no solo Primer/Segundo."""
+    df = pd.DataFrame([
+        _lead(
+            "clientify - whatsapp",
+            fecha_cierre=datetime(2026, 5, 1),
+            fecha_segundo=datetime(2026, 5, 20),
+            fecha_tercer=datetime(2026, 6, 1),
+            fecha_cuarto=datetime(2026, 6, 15),
+        ),
+    ])
+    out = closures_by_channel_over_time(df)
+    tipos = set(out["Tipo"])
+    assert tipos == {"Primer cierre", "Segundo cierre", "Tercer cierre", "Cuarto cierre"}
+    assert out[out["Tipo"] == "Tercer cierre"]["Total cierres"].iloc[0] == 1
+    assert out[out["Tipo"] == "Cuarto cierre"]["Total cierres"].iloc[0] == 1
 
 
 def test_agrupa_por_anio_mes_canal_y_tipo():

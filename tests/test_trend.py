@@ -94,6 +94,27 @@ def test_trend_rango_multi_anio():
     assert len(result) > 2
 
 
+@pytest.mark.parametrize("mes", [(2024, 6), (2025, 3), (2026, 4), (2026, 7), (2026, 8)])
+def test_trend_calificados_regla_estricta_uniforme_en_todos_los_meses(mes):
+    """La regla estricta de Calificados (2026-08-12c) no depende del mes:
+    un lead con motivo vacío y sin cierre NO debe calificar en NINGÚN mes
+    del histórico — ni en meses viejos ni en agosto. `monthly_trend` no
+    recibe ni aplica ningún filtro condicional por fecha además de agrupar
+    por mes de 'creado'."""
+    year, month = mes
+    df = pd.DataFrame([{
+        "creado": datetime(year, month, 15),
+        "propietario": "sofia",
+        "Motivo de no cierre": None,
+        "Cantidad de cierres": None,
+        "Fecha de cierre": pd.NaT,
+    }])
+    result = monthly_trend(df, end_year=year, end_month=month)
+    row = result[result["mes"] == f"{year}-{month:02d}"].iloc[0]
+    assert row["Calificados"] == 0, f"Falló para mes={year}-{month:02d}"
+    assert row["Asignados"] == 1, f"Falló para mes={year}-{month:02d}"
+
+
 def test_trend_cierres_es_suma_de_4_columnas_y_no_filtra_team():
     """La línea Cierres debe contar TODOS los cierres del mes (pauta + referidos)."""
     df = pd.DataFrame([

@@ -39,7 +39,12 @@ from src.ui.sections.closures_by_publication import render_closures_by_publicati
 from src.ui.sections.closures_by_gender import render_closures_by_gender
 from src.ui.sections.closures_vs_second_closures import render_closures_vs_second_closures
 from src.ui.sections.closures_by_channel_over_time import render_closures_by_channel_over_time
-from src.ui.sections.ad_spend import render_ad_spend
+from src.ui.sections.ad_spend import load_ad_spend_files, render_ad_spend
+from src.ui.sections.ad_spend_vs_closures import render_ad_spend_vs_closures
+from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
+from src.ui.sections.ad_spend_vs_revenue import render_ad_spend_vs_revenue
+from src.ui.sections.ad_spend_roas import render_ad_spend_roas
+from src.ui.sections.ad_spend_total_roas import render_ad_spend_total_roas
 
 
 def main():
@@ -88,13 +93,18 @@ def main():
 
         st.markdown("---")
         st.markdown("### 💰 Facturación / Inversión (Meta Ads)")
-        meta_billing_file = st.file_uploader(
-            "Cargar reporte de Facturación/Inversión (Meta Ads)",
+        meta_billing_files = st.file_uploader(
+            "Cargar reportes de Facturación/Inversión (Meta Ads)",
             type=["csv", "xls", "xlsx"],
             key="meta_billing_uploader",
-            help="Reporte de facturación/inversión exportado desde Meta Ads Manager (columnas Fecha, Divisa, Importe).",
+            accept_multiple_files=True,
+            help=(
+                "Podés cargar varios archivos a la vez: el histórico de "
+                "facturación y los reportes nuevos de cada cuenta "
+                "(columnas Fecha, Divisa, Importe)."
+            ),
         )
-        st.session_state.meta_billing_file = meta_billing_file
+        st.session_state.meta_billing_files = meta_billing_files
 
         st.divider()
         equipo = "todos"
@@ -126,73 +136,88 @@ def main():
     metrics = compute_all_metrics(df_period_full, df_unfiltered)
     metrics_prev = compute_all_metrics(df_period_prev, df_unfiltered)
 
-    render_kpi_cards(metrics, metrics_prev=metrics_prev, team=equipo)
-
     # df filtrado para las secciones de detalle
     df_current = filter_by_month(df, selected)
     df_full = df
 
-    # --- Análisis detallado ---
     st.markdown("---")
-    st.header("Análisis detallado")
 
-    # Secciones que respetan filtro de equipo
-    render_pauta_vs_referidos(df_current, df, selected.year, selected.month, team=equipo)
-    st.markdown("---")
-    render_cierres_por_canal(df_current, df_full, selected.year, selected.month, team=equipo)
-    st.markdown("---")
-    render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
-    st.markdown("---")
-    render_funnel(df_current, df_full, selected.year, selected.month)
-    st.markdown("---")
-    render_daily_sales(df_full, selected)
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Marketing e Inversión",
+        "🧬 Segmentación Clave",
+        "🔀 Embudo y Canales",
+        "🧾 Gestión Comercial",
+    ])
 
-    # Secciones globales (no respetan filtro de equipo)
-    st.markdown("---")
-    render_comparison(df_unfiltered, selected)
-    st.markdown("---")
-    render_trend(df_unfiltered, default_month=selected)
-    st.markdown("---")
-    render_closures_vs_second_closures(df_unfiltered)
-    st.markdown("---")
-    render_closures_by_channel_over_time(df_unfiltered)
-    st.markdown("---")
-    render_ad_spend(st.session_state.get("meta_billing_file"))
-    st.markdown("---")
-    render_leads_summary(df_unfiltered, default_month=selected)
-    st.markdown("---")
-    render_no_closure_history(df_unfiltered, default_year=selected.year, default_month=selected.month)
+    # === TAB 1: Marketing e Inversión — gasto en pauta, costo por lead, ROAS ===
+    with tab1:
+        meta_billing_files = st.session_state.get("meta_billing_files")
+        gasto_raw = load_ad_spend_files(meta_billing_files)
+        render_ad_spend(meta_billing_files)
+        st.markdown("---")
+        render_ad_spend_vs_closures(gasto_raw, df_unfiltered)
+        st.markdown("---")
+        render_ad_spend_cost_per_lead(gasto_raw, df_unfiltered)
+        st.markdown("---")
+        render_ad_spend_vs_revenue(gasto_raw, df_unfiltered)
+        st.markdown("---")
+        render_ad_spend_roas(gasto_raw, df_unfiltered)
+        st.markdown("---")
+        render_ad_spend_total_roas(gasto_raw, df_unfiltered)
 
-    st.markdown("---")
-    render_closures_by_process_type(df, selected.year, selected.month, team=equipo)
+    # === TAB 2: Segmentación Clave — quién cierra (geografía, demografía, proceso) ===
+    with tab2:
+        render_closures_by_process_type(df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_country(df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_state(df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_city(df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_sector(df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_age(df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_gender(df, selected.year, selected.month)
 
-    st.markdown("---")
-    render_closures_by_country(df, selected.year, selected.month, team=equipo)
+    # === TAB 3: Embudo y Canales — de dónde entran los leads y cómo avanzan ===
+    with tab3:
+        st.subheader("👤 Análisis por Asesor")
+        render_funnel(df_current, df_full, selected.year, selected.month)
+        st.markdown("---")
+        render_pauta_vs_referidos(df_current, df, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_cierres_por_canal(df_current, df_full, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
+        st.markdown("---")
+        render_closures_by_publication(df_unfiltered, selected.year, selected.month)
+        st.markdown("---")
+        render_closures_by_channel_over_time(df_unfiltered)
 
-    st.markdown("---")
-    render_closures_by_state(df, selected.year, selected.month, team=equipo)
+    # === TAB 4: Gestión Comercial — KPIs, operación diaria, tendencias, detalle ===
+    with tab4:
+        render_kpi_cards(metrics, metrics_prev=metrics_prev, team=equipo)
+        st.markdown("---")
+        render_closures_vs_second_closures(df_unfiltered)
+        st.markdown("---")
+        render_daily_sales(df_full, selected)
+        st.markdown("---")
+        render_no_closure_history(df_unfiltered, default_year=selected.year, default_month=selected.month)
+        st.markdown("---")
+        render_comparison(df_unfiltered, selected)
+        st.markdown("---")
+        render_trend(df_unfiltered, default_month=selected)
+        st.markdown("---")
+        render_leads_summary(df_unfiltered, default_month=selected)
 
-    st.markdown("---")
-    render_closures_by_city(df, selected.year, selected.month, team=equipo)
-
-    st.markdown("---")
-    render_closures_by_sector(df, selected.year, selected.month, team=equipo)
-
-    st.markdown("---")
-    render_closures_by_age(df, selected.year, selected.month, team=equipo)
-
-    st.markdown("---")
-    render_closures_by_gender(df, selected.year, selected.month)
-
-    st.markdown("---")
-    render_closures_by_publication(df_unfiltered, selected.year, selected.month)
-
-    with st.expander("Ver datos del período"):
-        # Las columnas "_is_*" son derivadas internas precalculadas por
-        # precompute_derived_columns (ver src/ui/upload.py) para acelerar los
-        # cálculos — no son datos del Excel original, no deben mostrarse acá.
-        cols_visibles = [c for c in df_current.columns if not c.startswith("_is_")]
-        st.dataframe(df_current[cols_visibles], use_container_width=True)
+        with st.expander("Ver datos del período"):
+            # Las columnas "_is_*" son derivadas internas precalculadas por
+            # precompute_derived_columns (ver src/ui/upload.py) para acelerar los
+            # cálculos — no son datos del Excel original, no deben mostrarse acá.
+            cols_visibles = [c for c in df_current.columns if not c.startswith("_is_")]
+            st.dataframe(df_current[cols_visibles], use_container_width=True)
 
 
 if __name__ == "__main__":

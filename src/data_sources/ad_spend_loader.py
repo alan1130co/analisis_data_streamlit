@@ -1,4 +1,5 @@
 """Carga del reporte de Facturación/Inversión de Meta Ads (CSV o Excel)."""
+import io
 from pathlib import Path
 from typing import IO, Union
 
@@ -38,7 +39,7 @@ class AdSpendLoader:
             self.file.seek(0)
 
         if name.endswith(".csv"):
-            return pd.read_csv(self.file)
+            return self._read_csv_skipping_metainfo()
 
         if name.endswith(".xlsx") or not name.endswith(".xls"):
             try:
@@ -47,6 +48,33 @@ class AdSpendLoader:
                 if hasattr(self.file, "seek"):
                     self.file.seek(0)
         return pd.read_excel(self.file)
+
+    def _read_csv_skipping_metainfo(self) -> pd.DataFrame:
+        """Meta exporta los CSV de Facturación con unas primeras líneas de
+        'Metainformación' (rango de fechas, cuenta, etc.) antes de la fila de
+        encabezados real, lo que rompe `pd.read_csv` si se lee directo.
+        Busca dinámicamente la línea que contiene los encabezados 'Fecha' e
+        'Importe' y recién ahí empieza a parsear."""
+        if hasattr(self.file, "read"):
+            raw = self.file.read()
+        else:
+            raw = Path(self.file).read_bytes()
+
+        if isinstance(raw, bytes):
+            try:
+                text = raw.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1")
+        else:
+            text = raw
+
+        lines = text.splitlines()
+        header_idx = next(
+            (i for i, line in enumerate(lines) if "Fecha" in line and "Importe" in line),
+            0,
+        )
+        content = "\n".join(lines[header_idx:])
+        return pd.read_csv(io.StringIO(content))
 
     @staticmethod
     def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:

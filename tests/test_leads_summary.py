@@ -89,3 +89,23 @@ def test_leads_summary_meses_sin_datos_son_cero(df):
     marzo = result[result["mes"] == "2026-03"].iloc[0]
     assert marzo["Leads"] == 0
     assert marzo["Calificados"] == 0
+
+
+@pytest.mark.parametrize("year,month", [(2024, 6), (2025, 11), (2026, 1), (2026, 4), (2026, 8)])
+def test_leads_summary_regla_calificados_uniforme_en_todos_los_meses(year, month):
+    """La regla estricta de Calificados (2026-08-12c) es la misma para
+    cualquier mes/año — un lead con motivo vacío y sin cierre NO debe
+    calificar, sea en 2024, 2025 o agosto 2026. `leads_summary` no aplica
+    ningún filtro condicional por fecha además de agrupar por mes."""
+    df_mes = pd.DataFrame([{
+        "creado": datetime(year, month, 10),
+        "propietario": "sofia",
+        "Motivo de no cierre": None,
+        "Cantidad de cierres": None,
+        "Fecha de cierre": pd.NaT,
+        "canal online": "inbox", "Canal offline": None, "Origen de la pauta": None,
+    }])
+    result = leads_summary(df_mes, year, month=month)
+    row = result.iloc[0]
+    assert row["Leads"] == 1, f"Falló para {year}-{month:02d}"
+    assert row["Calificados"] == 0, f"Falló para {year}-{month:02d}"

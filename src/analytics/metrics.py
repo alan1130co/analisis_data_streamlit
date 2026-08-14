@@ -40,12 +40,18 @@ def is_qualified_mask(df: pd.DataFrame) -> pd.Series:
     """
     Máscara booleana: True si el lead está calificado.
 
-    Calificado si cualquiera de estas condiciones se cumple:
-      - Motivo de no cierre está en QUALIFIED_MOTIVES
-      - Cantidad de cierres >= 1
-      - Motivo está vacío / None / 'nan' / 'sin diligenciar' (aún sin clasificar)
+    Regla estricta y sin excepciones (2026-08-12c, reemplaza todas las
+    versiones anteriores con excepciones por canal/asesor): un lead está
+    calificado ÚNICAMENTE si:
+      - Motivo de no cierre está en QUALIFIED_MOTIVES, o
+      - Cantidad de cierres >= 1 (cierre real)
 
-    Solo es NO calificado si el motivo está EXPLÍCITAMENTE en UNQUALIFIED_MOTIVES.
+    Cualquier otro caso es NO calificado — incluyendo motivo vacío / None /
+    'nan' / 'sin diligenciar' (ya NO cuenta como calificado por defecto) y
+    motivo en UNQUALIFIED_MOTIVES. No hay distinción por canal (Orgánico,
+    TikTok, redes sueltas, Pauta, Referido) ni por asesor (César Augusto
+    incluido): un motivo vacío sin cierre real es NO calificado para
+    absolutamente cualquier lead, sin excepción.
     """
     if df.empty:
         return pd.Series([], dtype=bool, index=df.index)
@@ -62,9 +68,23 @@ def is_qualified_mask(df: pd.DataFrame) -> pd.Series:
 
     mask_qualified_motive = motivo.isin(QUALIFIED_MOTIVES)
     mask_cierre = cierres >= 1
-    mask_no_diligenciar = motivo.isin({"", "nan", "none", "sin diligenciar"})
 
-    return mask_qualified_motive | mask_cierre | mask_no_diligenciar
+    return mask_qualified_motive | mask_cierre
+
+
+def has_motivo_diligenciado_mask(df: pd.DataFrame) -> pd.Series:
+    """Máscara booleana: True si 'Motivo de no cierre' viene diligenciado
+    (no vacío/None/'nan'/'sin diligenciar').
+
+    Usada para filtrar el conteo de la tarjeta "Leads Orgánicos y TikTok"
+    (Gestión Comercial, ver `compute_all_metrics`): un lead Orgánico/TikTok
+    (fuera de César, Suma 1) solo cuenta en esa bolsa si además viene
+    diligenciado.
+    """
+    if df.empty or "Motivo de no cierre" not in df.columns:
+        return pd.Series(False, index=df.index)
+    motivo = df["Motivo de no cierre"].fillna("").astype(str).str.lower().str.strip()
+    return ~motivo.isin({"", "nan", "none", "sin diligenciar"})
 
 
 @dataclass
@@ -483,12 +503,28 @@ def compute_all_metrics(
     organico_generales_mask = organico_mask & ~cesar_mask
     tiktok_generales_mask = tiktok_mask & ~cesar_mask
 
+    # Regla de negocio: un lead Orgánico/TikTok (fuera de César) solo cuenta
+    # para la tarjeta "Leads Orgánicos y TikTok" si su 'Motivo de no cierre'
+    # viene diligenciado — un motivo vacío/sin clasificar lo excluye de este
+    # conteo puntual. Desde 2026-08-12, `is_qualified_mask` aplica la MISMA
+    # exclusión (motivo vacío + sin cierre real → NO calificado) para este
+    # mismo universo Orgánico/TikTok no-César, así que ya no hay divergencia
+    # entre esta tarjeta y Calificados/No calificados del embudo. NO se
+    # aplica a Suma 1 (César, `cesar_mask` más abajo): su regla es "sin
+    # importar canal ni estado" y esta exclusión no fue pedida para ese caso.
+    # Tampoco se aplica a `asignados_organico`/`asignados_tiktok` (más abajo)
+    # ni a `leads_pauta` — el pedido fue exclusivamente sobre estos conteos.
+    motivo_diligenciado_mask = has_motivo_diligenciado_mask(df_period)
+    organico_leads_mask = organico_generales_mask & motivo_diligenciado_mask
+    tiktok_leads_mask = tiktok_generales_mask & motivo_diligenciado_mask
+
     leads_pauta = int(mkt_mask.sum())
-    leads_organico = int(organico_generales_mask.sum())
-    leads_tiktok = int(tiktok_generales_mask.sum())
+    leads_organico = int(organico_leads_mask.sum())
+    leads_tiktok = int(tiktok_leads_mask.sum())
     # Regla 2026-07-03h: Suma 1 = TODO lead cuyo propietario sea César Augusto,
     # sin importar canal/origen de contacto (ya no se filtra por
-    # Messenger/Instagram). Suma 2 = TikTok/Orgánico de canal (no-César).
+    # Messenger/Instagram). Suma 2 = TikTok/Orgánico de canal (no-César),
+    # ahora restringida a motivo diligenciado (ver arriba).
     # Sin doble conteo: is_tiktok tiene prioridad sobre is_organico (ver
     # is_organico), así que un lead con Canal offline=TikTok y Origen de la
     # pauta=Orgánico cae una sola vez en Suma 2b (TikTok).

@@ -7,7 +7,13 @@ import streamlit as st
 
 from src.analytics.closures_by_channel_over_time import closures_by_channel_over_time
 
-_COLOR_MAP = {"Primer cierre": "#1F77B4", "Segundo cierre": "#FF7F0E"}
+_COLOR_MAP = {
+    "Primer cierre": "#1F77B4",
+    "Segundo cierre": "#FF7F0E",
+    "Tercer cierre": "#2CA02C",
+    "Cuarto cierre": "#9467BD",
+}
+_TIPO_ORDER = ["Primer cierre", "Segundo cierre", "Tercer cierre", "Cuarto cierre"]
 
 
 def render_closures_by_channel_over_time(df: pd.DataFrame) -> None:
@@ -31,11 +37,13 @@ def render_closures_by_channel_over_time(df: pd.DataFrame) -> None:
         color="Tipo",
         facet_col="Canal",
         text="Total cierres",
-        title="Cierres por canal (Pauta directa vs Referidos) – Desde 2025",
         color_discrete_map=_COLOR_MAP,
-        category_orders={"Año-Mes": sorted(data["Año-Mes"].unique())},
+        category_orders={
+            "Año-Mes": sorted(data["Año-Mes"].unique()),
+            "Tipo": _TIPO_ORDER,
+        },
     )
     fig.update_traces(textposition="outside")
-    fig.update_layout(template="plotly_white")
+    fig.update_layout(template="plotly_white", margin=dict(t=60))
     fig.update_xaxes(type="category", categoryorder="category ascending")
     st.plotly_chart(fig, use_container_width=True)

@@ -195,7 +195,9 @@ def test_efficiency_todos_columnas():
 
 
 def test_efficiency_todos_calcula_eficiencia_sobre_calificados():
-    """Todos: con 2 calificados y 1 cierre pauta → % Efic. pauta = 50.0."""
+    """Todos: con 1 calificado (regla estricta 2026-08-12c: el 2do lead,
+    motivo vacío y sin cierre, ya no califica) y 1 cierre pauta →
+    % Efic. pauta = 100.0."""
     df = pd.DataFrame([
         {"creado": pd.Timestamp("2026-04-01"), "propietario": "Ana",
          "Canal offline": "Clientify - Whatsapp", "canal online": "paid social",
@@ -210,9 +212,9 @@ def test_efficiency_todos_calcula_eficiencia_sobre_calificados():
     ])
     result = efficiency_by_advisor(df, df, 2026, 4, team="Todos", only_with_closures=False)
     ana = result[result["Asesor"] == "Ana"].iloc[0]
-    assert ana["Calificados"] == 2
+    assert ana["Calificados"] == 1
     assert ana["Cierres pauta"] == 1
-    assert ana["% Efic. pauta"] == pytest.approx(50.0)
+    assert ana["% Efic. pauta"] == pytest.approx(100.0)
 
 
 # ---------------------------------------------------------------------------

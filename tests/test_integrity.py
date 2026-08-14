@@ -130,7 +130,7 @@ def test_calificados_consistente_entre_secciones():
          "canal online": "paid social", "Canal offline": "clientify - instagram",
          "Origen de la pauta": "instagram", "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 10), **_CLOSE_NaT},
-        # ana: mkt, sin cierre, Motivo=None → calificado
+        # ana: mkt, sin cierre, Motivo=None → NO calificado (regla estricta 2026-08-12c)
         {"creado": _PERIOD, "propietario": "ana", "estado": "en transito",
          "canal online": "paid social", "Canal offline": "clientify - instagram",
          "Origen de la pauta": "instagram", "Motivo de no cierre": None,
@@ -138,7 +138,9 @@ def test_calificados_consistente_entre_secciones():
     ])
 
     metrics = compute_all_metrics(df_period, df_period)
-    # Expected: 3 calificados (Motivo=None ×2, QUALIFIED_MOTIVES ×1; UNQUALIFIED ×1 → NO)
+    # Expected: 2 calificados (sofia vía cierre real, ana vía QUALIFIED_MOTIVES);
+    # el último lead (ana, Motivo=None sin cierre) ya NO califica (regla estricta 2026-08-12c).
+    # El test no hardcodea el número — solo verifica consistencia entre vistas.
 
     funnel = funnel_by_advisor(df_period, df_period, 2026, 4)
     assert metrics.calificados == int(funnel["Calificados"].sum()), \
@@ -176,7 +178,8 @@ def test_calificados_marketing_mas_referidos_igual_total():
          "canal online": "inbox", "Canal offline": "referido - cliente activo",
          "Origen de la pauta": None, "Motivo de no cierre": "cliente potencial",
          "Cantidad de cierres": None, "Fecha de cierre": _NaT, **_CLOSE_NaT},
-        # Referido (canal vacío/None), calificado (Motivo=None)
+        # Referido (canal vacío/None), NO calificado (Motivo=None, sin cierre,
+        # regla estricta 2026-08-12c)
         {"creado": _PERIOD, "propietario": None,
          "canal online": "inbox", "Canal offline": None,
          "Origen de la pauta": None, "Motivo de no cierre": None,
@@ -187,15 +190,20 @@ def test_calificados_marketing_mas_referidos_igual_total():
     df_mkt = df_all[mkt_mask]
     df_ref = df_all[~mkt_mask]
 
-    m_total = compute_all_metrics(df_all, df_all).calificados  # 4 (leads 0, 2, 3, 4)
+    # 2026-08-12c: lead 4 (Motivo=None, sin cierre) ya no califica, así que
+    # los totales bajaron de 4/1/3 a 3/1/2 — el test no depende del número
+    # exacto, solo de que Todos == Marketing + Referidos se siga cumpliendo.
+    m_total = compute_all_metrics(df_all, df_all).calificados  # 3 (leads 0, 2, 3)
     m_mkt = compute_all_metrics(df_mkt, df_mkt).calificados    # 1 (lead 0)
-    m_ref = compute_all_metrics(df_ref, df_ref).calificados    # 3 (leads 2, 3, 4)
+    m_ref = compute_all_metrics(df_ref, df_ref).calificados    # 2 (leads 2, 3)
     assert m_total == m_mkt + m_ref, \
         f"Todos={m_total}, Marketing={m_mkt}, Referidos={m_ref}, suma={m_mkt + m_ref}"
 
 
-def test_calificado_motivo_vacio_cuenta():
-    """Motivo vacío o None → CALIFICADO; motivo en UNQUALIFIED_MOTIVES sin cierre → NO calificado."""
+def test_calificado_motivo_vacio_no_cuenta():
+    """Regla estricta (2026-08-12c): motivo vacío o None sin cierre real →
+    NO calificado (ya no cuenta por defecto); motivo en UNQUALIFIED_MOTIVES
+    sin cierre → tampoco calificado (sin cambios)."""
     _base = {
         "canal online": "inbox", "Canal offline": None, "Origen de la pauta": None,
         "Cantidad de cierres": None, "Fecha de cierre": _NaT, **_CLOSE_NaT,
@@ -206,17 +214,18 @@ def test_calificado_motivo_vacio_cuenta():
         {**_base, "creado": _PERIOD, "propietario": "Carlos", "Motivo de no cierre": "no se logró contactar"},
     ])
     metrics = compute_all_metrics(df, df)
-    assert metrics.calificados == 2, \
-        f"Esperado 2 calificados ('' y None), obtenido {metrics.calificados}"
+    assert metrics.calificados == 0, \
+        f"Esperado 0 calificados ('', None y UNQUALIFIED no califican), obtenido {metrics.calificados}"
 
 
-def test_calificados_motivo_vacio_cuenta_en_las_3_vistas():
+def test_calificados_motivo_vacio_no_cuenta_en_ninguna_de_las_3_vistas():
     """
-    Un lead con Motivo de no cierre vacío debe contar como calificado
-    en Marketing, Referidos y Todos — las 3 vistas usan is_qualified_mask.
+    Regla estricta (2026-08-12c): un lead con Motivo de no cierre vacío NO
+    debe contar como calificado en ninguna vista — Marketing, Referidos ni
+    Todos — las 3 usan la misma `is_qualified_mask` compartida.
     """
     df = pd.DataFrame([
-        # Marketing, motivo vacío → calificado en pauta
+        # Marketing, motivo vacío → NO calificado en pauta
         {
             "creado": pd.Timestamp("2026-04-01"),
             "Canal offline": "Clientify - Whatsapp",
@@ -225,7 +234,7 @@ def test_calificados_motivo_vacio_cuenta_en_las_3_vistas():
             "Cantidad de cierres": None,
             "propietario": "Ana",
         },
-        # Referido, motivo None → calificado en referidos
+        # Referido, motivo None → NO calificado en referidos
         {
             "creado": pd.Timestamp("2026-04-02"),
             "Canal offline": "Referido externo",
@@ -234,7 +243,7 @@ def test_calificados_motivo_vacio_cuenta_en_las_3_vistas():
             "Cantidad de cierres": None,
             "propietario": "Juan",
         },
-        # Marketing, UNQUALIFIED → NO calificado
+        # Marketing, UNQUALIFIED → NO calificado (sin cambios)
         {
             "creado": pd.Timestamp("2026-04-03"),
             "Canal offline": "Clientify - Facebook",
@@ -247,12 +256,12 @@ def test_calificados_motivo_vacio_cuenta_en_las_3_vistas():
 
     metrics = compute_all_metrics(df, df)
 
-    assert metrics.calificados == 2, \
-        f"Total calificados esperado=2, obtenido={metrics.calificados}"
-    assert metrics.calificados_pauta == 1, \
-        f"Calificados pauta esperado=1, obtenido={metrics.calificados_pauta}"
-    assert metrics.calificados_referido == 1, \
-        f"Calificados referido esperado=1, obtenido={metrics.calificados_referido}"
+    assert metrics.calificados == 0, \
+        f"Total calificados esperado=0, obtenido={metrics.calificados}"
+    assert metrics.calificados_pauta == 0, \
+        f"Calificados pauta esperado=0, obtenido={metrics.calificados_pauta}"
+    assert metrics.calificados_referido == 0, \
+        f"Calificados referido esperado=0, obtenido={metrics.calificados_referido}"
 
 
 def test_april_2026_numeros_reales_verificados_manualmente():
@@ -307,7 +316,16 @@ def test_april_2026_numeros_reales_verificados_manualmente():
 
 
 def test_april_2026_creados_y_calificados_marketing():
-    """Validación de los números reales de Marketing en abril 2026."""
+    """Validación de los números reales de Marketing en abril 2026.
+
+    ATENCIÓN (2026-08-12c): `calificados_pauta`/`no_calificados_pauta` fueron
+    calculados con la regla ANTERIOR (motivo vacío = calificado por defecto).
+    Con la regla estricta actual (motivo vacío sin cierre real = NO
+    calificado), estos dos números casi seguro bajaron — no se pudieron
+    recalcular en esta sesión porque no hay `.xls` real en `data/raw/`. Si
+    este test empieza a correr con un archivo real, recalcular ambos valores
+    antes de asumir que un fallo es una regresión.
+    """
     raw_dir = Path("data/raw")
     files = sorted(raw_dir.glob("*.xls*"))
     if not files:
@@ -368,6 +386,16 @@ def test_junio_2026_total_cierres_general_regla_estado_inactivo():
     eficiencia_global = 43*100/873 = 4.93% (antes 43*100/1090 = 3.94%).
     Si se carga otro archivo, recalcular con el script de debug antes de
     confiar en estos valores.
+
+    ATENCIÓN (2026-08-12c): `calificados` (873) y por lo tanto
+    `eficiencia_real` fueron calculados con la regla ANTERIOR (motivo vacío
+    sin cierre = calificado por defecto). Con la regla estricta actual
+    (motivo vacío sin cierre real = NO calificado), `calificados` casi
+    seguro bajó bastante — no se pudo recalcular en esta sesión (sin `.xls`
+    real en `data/raw/`). `total_cierres_general`/`cierres_*`/`creados` NO
+    se ven afectados (no dependen de `is_qualified_mask`), solo
+    `calificados`/`eficiencia_real`. Recalcular antes de confiar en el 873
+    si este test llega a correr con un archivo real.
     """
     raw_dir = Path("data/raw")
     files = sorted(raw_dir.glob("*.xls*"))
