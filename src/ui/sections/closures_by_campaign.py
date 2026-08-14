@@ -8,8 +8,10 @@ import streamlit as st
 from src.analytics.closures_by_campaign import (
     CATEGORY_COLUMN,
     CATEGORY_LABEL,
+    available_periods,
     closures_by_campaign,
 )
+from src.ui.period_selector import format_period_label, render_period_selector
 
 _BAR_COLOR = "#2563EB"
 _TRANSPARENT = "rgba(0,0,0,0)"
@@ -18,23 +20,35 @@ _TOP_N = 15
 
 def render_closures_by_campaign(
     df_full: pd.DataFrame,
-    year: int,
-    month: int,
+    default_year: int,
+    default_month: int,
     team: str = "Todos",
 ) -> None:
-    """Sigue el mismo período (año/mes) y filtro de equipo que el resto del
-    dashboard — sin selector propio — para que se actualice junto con las
-    demás secciones al cambiar el mes en el filtro principal."""
+    """Desde 2026-08-14 tiene su propio `st.selectbox` de "Período" (mismo
+    patrón que `closures_by_state.py` y el resto de los desgloses) en vez de
+    seguir obligatoriamente al selector global — el mes global sigue siendo
+    el default. `available_periods` ya existía en
+    `analytics/closures_by_campaign.py` pero no estaba conectada a la UI."""
     st.markdown("### 🎯 Cierres por Campaña")
 
     if CATEGORY_COLUMN not in df_full.columns:
         st.info(f"La columna '{CATEGORY_COLUMN}' no existe en los datos cargados.")
         return
 
+    periods = available_periods(df_full)
+    sel = render_period_selector(
+        periods, default_year, default_month,
+        key=f"closures_campaign_period_{default_year}_{default_month}",
+    )
+    if sel is None:
+        st.info("No hay cierres de campañas registrados.")
+        return
+    year, month = sel
+
     dist = closures_by_campaign(df_full, year, month, team)
 
     if dist.empty:
-        st.info("No hay cierres de campañas registrados en el período.")
+        st.info(f"No hay cierres de campañas registrados en {format_period_label(year, month)}.")
         return
 
     total = int(dist["Total"].sum())
@@ -83,4 +97,4 @@ def render_closures_by_campaign(
         display = dist[[CATEGORY_LABEL, "Total", "Porcentaje"]].rename(columns={"Total": "Cierres", "Porcentaje": "%"})
         st.dataframe(display, use_container_width=True, hide_index=True)
 
-    st.caption(f"Mostrando {total} cierres en el período seleccionado para {team}.")
+    st.caption(f"Mostrando {total} cierres en {format_period_label(year, month)} para {team}.")

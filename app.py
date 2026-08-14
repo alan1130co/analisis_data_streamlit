@@ -184,11 +184,11 @@ def main():
     # === TAB 3: Embudo y Canales — de dónde entran los leads y cómo avanzan ===
     with tab3:
         st.subheader("👤 Análisis por Asesor")
-        render_funnel(df_current, df_full, selected.year, selected.month)
+        render_funnel(df_full, selected.year, selected.month)
         st.markdown("---")
-        render_pauta_vs_referidos(df_current, df, selected.year, selected.month, team=equipo)
+        render_pauta_vs_referidos(df, selected.year, selected.month, team=equipo)
         st.markdown("---")
-        render_cierres_por_canal(df_current, df_full, selected.year, selected.month, team=equipo)
+        render_cierres_por_canal(df_full, selected.year, selected.month, team=equipo)
         st.markdown("---")
         render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
         st.markdown("---")

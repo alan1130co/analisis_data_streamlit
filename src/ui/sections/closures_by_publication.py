@@ -9,13 +9,7 @@ from src.analytics.closures_by_publication import (
     closures_by_origen_pauta,
     available_periods,
 )
-
-
-_MONTHS_ES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
-}
+from src.ui.period_selector import format_period_label, render_period_selector
 
 _PALETTE_VIBRANTE = [
     "#2563EB",  # azul brillante
@@ -43,22 +37,16 @@ def render_closures_by_publication(
     st.markdown("### Cierres por video y origen de pauta")
 
     periods = available_periods(df_clientify)
-    if not periods:
+    sel = render_period_selector(
+        periods, default_year, default_month,
+        key=f"closures_publi_period_{default_year}_{default_month}",
+        label="Periodo",
+    )
+    if sel is None:
         st.info("No hay cierres registrados.")
         return
-
-    default = (default_year, default_month) if (default_year, default_month) in periods else periods[0]
-    options = [f"{_MONTHS_ES[m]} {y}" for (y, m) in periods]
-    label_to_period = dict(zip(options, periods))
-    default_label = f"{_MONTHS_ES[default[1]]} {default[0]}"
-
-    selected_label = st.selectbox(
-        "Periodo",
-        options=options,
-        index=options.index(default_label),
-        key=f"closures_publi_period_{default_year}_{default_month}",
-    )
-    sel_year, sel_month = label_to_period[selected_label]
+    sel_year, sel_month = sel
+    selected_label = format_period_label(sel_year, sel_month)
 
     # === PARTE 1: Cierres por publicacion/video ===
     st.markdown("#### Que publicacion trajo mas cierres?")
@@ -129,10 +117,16 @@ def render_closures_by_publication(
         )])
         total_origen = int(dist_origen["Cierres"].sum())
         fig2.update_layout(
-            height=400,
-            margin=dict(l=80, r=140, t=20, b=40),
+            height=460,
+            # Leyenda horizontal debajo (2026-08-14) en vez de columna
+            # vertical fija a la derecha — mismo fix que el resto de las
+            # donas de esta sección (`closures_by_sector.py`,
+            # `closures_by_process_type.py`): r=140 fijo dejaba la dona
+            # reducida en celulares angostos. Wrap automático a cualquier
+            # ancho con orientation="h".
+            margin=dict(l=20, r=20, t=20, b=90),
             showlegend=True,
-            legend=dict(orientation="v", x=1.02, y=0.5, font=dict(size=11)),
+            legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.12, font=dict(size=11)),
             annotations=[dict(
                 text=f"<b>{total_origen}</b><br>Cierres",
                 x=0.5, y=0.5, font_size=15, showarrow=False,

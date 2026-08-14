@@ -5,7 +5,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.analytics.breakdowns import cierres_por_canal
+from src.analytics.breakdowns import available_periods, cierres_por_canal
+from src.ui.period_selector import format_period_label, render_period_selector
 
 _TRANSPARENT = "rgba(0,0,0,0)"
 _COLORS_10 = [
@@ -15,17 +16,39 @@ _COLORS_10 = [
 
 
 def render_cierres_por_canal(
-    df_period: pd.DataFrame,
     df_full: pd.DataFrame,
-    year: int,
-    month: int,
+    default_year: int,
+    default_month: int,
     team: str = "Marketing (pautas)",
 ) -> None:
+    """`df_full` ya viene filtrado por equipo desde `app.py` (igual que
+    antes). Desde 2026-08-14 esta gráfica tiene su propio `st.selectbox` de
+    "Período" (mismo patrón que `closures_by_state.py` y el resto de los
+    desgloses) en vez de seguir obligatoriamente al selector global — el mes
+    global sigue siendo el default.
+
+    Antes recibía también `df_period` (el df ya filtrado al mes GLOBAL, vía
+    `filter_by_month`) solo para un chequeo `.empty` — con el selector local
+    nuevo eso quedó roto: si el usuario elegía acá un mes distinto al
+    global, `df_period` seguía atado al mes global y podía dar `.empty` pese
+    a que `df_full` sí tenía cierres para el mes recién elegido. Se sacó ese
+    parámetro; `cierres_por_canal()` ya filtra todo lo que necesita de
+    `df_full` por `year`/`month`."""
     st.subheader("📋 Cierres por canal")
 
-    data = cierres_por_canal(df_period, df_full, year, month, team=team)
+    periods = available_periods(df_full)
+    sel = render_period_selector(
+        periods, default_year, default_month,
+        key=f"cierres_canal_period_{default_year}_{default_month}",
+    )
+    if sel is None:
+        st.info("No hay cierres registrados.")
+        return
+    year, month = sel
+
+    data = cierres_por_canal(df_full, df_full, year, month, team=team)
     if data.empty:
-        st.info("No hay cierres registrados en el período.")
+        st.info(f"No hay cierres registrados en {format_period_label(year, month)}.")
         return
 
     total = int(data["Cantidad"].sum())
@@ -54,11 +77,19 @@ def render_cierres_por_canal(
         )
         fig.update_layout(
             height=460,
-            margin=dict(l=80, r=140, t=40, b=80),
+            # l/r chicos y simétricos (2026-08-14): antes l=80/r=140 más un
+            # `legend=dict(...)` de leyenda lateral vertical que nunca se
+            # mostraba (`showlegend=False` — las etiquetas van adentro de la
+            # dona vía `texttemplate`). Margen muerto que en un celular
+            # angosto dejaba la dona reducida a una fracción del ancho real
+            # disponible (esta sección además vive en `col_chart` de un
+            # `st.columns([3, 2])`, que en mobile pasa a ocupar el 100% del
+            # ancho de pantalla, no 3/5 — el margen fijo pesa proporcionalmente
+            # mucho más ahí que en desktop).
+            margin=dict(l=20, r=20, t=40, b=80),
             showlegend=False,
             plot_bgcolor=_TRANSPARENT,
             paper_bgcolor=_TRANSPARENT,
-            legend=dict(orientation="v", x=1.05, y=0.5, font=dict(size=10)),
             uniformtext_minsize=10,
             uniformtext_mode="hide",
         )

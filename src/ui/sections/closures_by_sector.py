@@ -10,6 +10,7 @@ from src.analytics.closures_by_sector import (
     available_periods,
     closures_by_sector,
 )
+from src.ui.period_selector import format_period_label, render_period_selector
 
 _TRANSPARENT = "rgba(0,0,0,0)"
 _COLORS_15 = [
@@ -17,12 +18,6 @@ _COLORS_15 = [
     "#DC2626", "#D97706", "#059669", "#9333EA", "#E11D48",
     "#0EA5E9", "#65A30D", "#DB2777", "#4F46E5", "#EAB308",
 ]
-
-_MONTHS_ES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
-}
 
 
 def render_closures_by_sector(
@@ -38,22 +33,15 @@ def render_closures_by_sector(
         return
 
     periods = available_periods(df_full)
-    if not periods:
-        st.info("No hay cierres registrados.")
-        return
-
-    default = (default_year, default_month) if (default_year, default_month) in periods else periods[0]
-    options_labels = [f"{_MONTHS_ES[m]} {y}" for (y, m) in periods]
-    label_to_period = dict(zip(options_labels, periods))
-    default_label = f"{_MONTHS_ES[default[1]]} {default[0]}"
-
-    selected_label = st.selectbox(
-        "Período",
-        options=options_labels,
-        index=options_labels.index(default_label),
+    sel = render_period_selector(
+        periods, default_year, default_month,
         key=f"closures_sector_period_{default_year}_{default_month}",
     )
-    sel_year, sel_month = label_to_period[selected_label]
+    if sel is None:
+        st.info("No hay cierres registrados.")
+        return
+    sel_year, sel_month = sel
+    selected_label = format_period_label(sel_year, sel_month)
 
     dist = closures_by_sector(df_full, sel_year, sel_month, team)
 
@@ -82,10 +70,16 @@ def render_closures_by_sector(
         yanchor="middle",
     )
     fig.update_layout(
-        height=460,
-        margin=dict(l=20, r=180, t=20, b=20),
+        height=560,
+        # Leyenda horizontal debajo (2026-08-14) en vez de columna vertical
+        # fija a la derecha — r=180 era el margen fijo más grande de todo
+        # el dashboard: en un celular (~340px de ancho útil) dejaba la dona
+        # reducida a menos de la mitad del contenedor. Con orientation="h"
+        # la leyenda hace wrap sola a cualquier ancho, mismo patrón que
+        # `funnel.py`/`trend.py`/`comparison.py`/`leads_summary.py`.
+        margin=dict(l=20, r=20, t=20, b=100),
         showlegend=True,
-        legend=dict(orientation="v", x=1.02, y=0.5, xanchor="left", yanchor="middle"),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.12),
         plot_bgcolor=_TRANSPARENT,
         paper_bgcolor=_TRANSPARENT,
     )

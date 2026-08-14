@@ -54,4 +54,28 @@
     [data-testid="stFileUploaderDropzoneInstructions"] {
         white-space: normal;
     }
+
+    /* Las 4 tabs superiores (📊 Marketing e Inversión / 🧬 Segmentación
+       Clave / 🔀 Embudo y Canales / 🧾 Gestión Comercial) no entran enteras
+       en ~340-400px de ancho útil. Streamlit ya hace scroll horizontal en
+       la tab-list por su cuenta; esto solo achica texto/padding para que
+       entren más pestañas visibles antes de tener que hacer swipe, y
+       asegura un alto táctil mínimo (~44px) en cada tab. */
+    [data-baseweb="tab-list"] {
+        overflow-x: auto;
+    }
+    [data-baseweb="tab"] {
+        font-size: 0.8rem;
+        padding: 10px 12px !important;
+        white-space: nowrap;
+    }
+
+    /* Gráficas de dona/torta con leyenda horizontal debajo del gráfico
+       (cierres_por_canal, pauta_vs_referidos, closures_by_sector,
+       closures_by_process_type, closures_by_publication): la leyenda ya
+       hace wrap sola en varias filas vía Plotly, esto solo evita que el
+       texto de cada item quede pegado al del siguiente en una fila angosta. */
+    .js-plotly-plot .legend text {
+        font-size: 10px !important;
+    }
 }

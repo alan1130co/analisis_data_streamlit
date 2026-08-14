@@ -80,34 +80,33 @@ def render_no_closure_history(
     total = int(dist["Cantidad"].sum())
     n = len(dist)
 
-    fig = go.Figure(data=[go.Pie(
-        labels=dist["Motivo"],
-        values=dist["Cantidad"],
-        hole=0.45,
-        sort=False,
-        pull=[0.02] * n,
-        marker=dict(
-            colors=_PALETTE[:n],
-            line=dict(color="white", width=2),
-        ),
-        textposition="auto",
-        textinfo="label+percent+value",
-        textfont=dict(size=10),
-        hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>%{percent}<extra></extra>",
+    # Barras horizontales en vez de dona (2026-08-14): con muchos motivos de
+    # baja frecuencia, la dona amontonaba etiquetas y la leyenda lateral se
+    # volvía enorme e ilegible. `motive_distribution_filtered` ya devuelve
+    # "Cantidad desc" — solo se invierte el orden acá porque Plotly dibuja
+    # las barras horizontales de abajo hacia arriba, y así el motivo más
+    # frecuente queda arriba. Un color por motivo (mismo `_PALETTE` de
+    # antes) en vez de una escala continua, para no perder la identidad
+    # visual de cada categoría; sin leyenda porque cada barra ya lleva su
+    # etiqueta en el eje Y (esa leyenda era justamente el problema).
+    plot_data = dist.iloc[::-1]
+    colors = [_PALETTE[i % len(_PALETTE)] for i in range(n)][::-1]
+
+    fig = go.Figure(data=[go.Bar(
+        x=plot_data["Cantidad"],
+        y=plot_data["Motivo"],
+        orientation="h",
+        marker=dict(color=colors),
+        text=[f"{c} ({p}%)" for c, p in zip(plot_data["Cantidad"], plot_data["Porcentaje"])],
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Cantidad: %{x}<extra></extra>",
     )])
     fig.update_layout(
-        height=560,
-        margin=dict(l=120, r=200, t=40, b=60),
-        showlegend=True,
-        legend=dict(font=dict(size=10), orientation="v", x=1.05, y=0.5),
-        uniformtext_minsize=9,
-        uniformtext_mode="hide",
-        annotations=[dict(
-            text=f"<b>{total}</b><br>Leads",
-            x=0.5, y=0.5,
-            font_size=15,
-            showarrow=False,
-        )],
+        height=max(360, 34 * n),
+        margin=dict(l=10, r=80, t=20, b=40),
+        showlegend=False,
+        xaxis=dict(title="Leads", showgrid=True, gridcolor="rgba(148,163,184,0.25)"),
+        yaxis=dict(title=""),
     )
     st.plotly_chart(fig, use_container_width=True)
 

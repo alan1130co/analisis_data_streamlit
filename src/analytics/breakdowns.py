@@ -25,6 +25,22 @@ _CLOSE_COLS = [
 ]
 
 
+def available_periods(df_full: pd.DataFrame) -> list[tuple[int, int]]:
+    """Lista de (año, mes) con al menos un cierre (cualquiera de las 4
+    fechas), de más reciente a más antiguo — mismo criterio y misma forma
+    que el `available_periods` de cada módulo `analytics/closures_by_*.py`,
+    para alimentar el selector de período de `pauta_vs_referidos` y
+    `cierres_por_canal` (`src/ui/sections/`, ver `src/ui/period_selector.py`)."""
+    periods: set[tuple[int, int]] = set()
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        s = pd.to_datetime(df_full[col], errors="coerce").dropna()
+        for ts in s:
+            periods.add((ts.year, ts.month))
+    return sorted(periods, reverse=True)
+
+
 def _closures_in_month_mask(df: pd.DataFrame, year: int, month: int) -> pd.Series:
     """Máscara booleana: True si el lead tiene al menos un cierre en el mes dado."""
     mask = pd.Series(False, index=df.index)

@@ -1,18 +1,44 @@
 """Sección: Embudo Asignados → Calificados → Cierres."""
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.analytics.filters import available_months, filter_by_month
 from src.analytics.funnel import funnel_by_advisor
+from src.ui.period_selector import render_period_selector
 from src.utils.formatters import format_percent_raw
 
 _TRANSPARENT = "rgba(0,0,0,0)"
 
 
-def render_funnel(df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int) -> None:
+def render_funnel(df_full: pd.DataFrame, default_year: int, default_month: int) -> None:
+    """El "período" del embudo es el mes de CREACIÓN del lead (columna
+    'creado', columna "Asignados") — a diferencia de las demás gráficas
+    de esta sección, que filtran por fecha de CIERRE. Por eso reusa
+    `available_months`/`filter_by_month` de `src/analytics/filters.py` (las
+    mismas funciones que arman el selector global de `app.py`) en vez del
+    `available_periods` de `breakdowns.py`.
+
+    Antes recibía `df_period` ya filtrado por `app.py` al mes GLOBAL. Desde
+    2026-08-14 el filtrado se hace acá adentro, después de resolver el
+    período con el `st.selectbox` propio — así puede diferir del mes global
+    sin desincronizarse (mismo motivo que el fix en `cierres_por_canal.py`)."""
     st.subheader("🔽 Embudo Asignados → Calificados → Cierres")
+
+    periods = [(d.year, d.month) for d in available_months(df_full)]
+    sel = render_period_selector(
+        periods, default_year, default_month,
+        key=f"funnel_period_{default_year}_{default_month}",
+    )
+    if sel is None:
+        st.info("Sin datos disponibles.")
+        return
+    year, month = sel
+    df_period = filter_by_month(df_full, date(year, month, 1))
 
     data = funnel_by_advisor(df_period, df_full, year, month)
 

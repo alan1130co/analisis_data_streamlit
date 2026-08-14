@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from src.analytics.breakdowns import (
+    available_periods,
     cierres_por_canal,
     efficiency_by_advisor,
     pauta_vs_referidos,
@@ -369,3 +370,34 @@ def test_cierres_por_canal_y_pauta_vs_referidos_usan_periodo_explicito():
     assert int(pvr_julio["Cantidad"].sum()) == 1
     pvr_abril = pauta_vs_referidos(df_period, df_full, 2026, 4)
     assert int(pvr_abril["Cantidad"].sum()) == 0
+
+
+# --- available_periods (2026-08-14: alimenta el selector propio de
+# "Pauta vs Referidos" y "Cierres por canal", src/ui/period_selector.py) ---
+
+def test_available_periods_lista_meses_con_al_menos_un_cierre():
+    df = pd.DataFrame([
+        {"Fecha de cierre": datetime(2026, 4, 1), "Fecha de segundo cierre": pd.NaT,
+         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        {"Fecha de cierre": pd.NaT, "Fecha de segundo cierre": datetime(2026, 7, 15),
+         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+    ])
+    assert available_periods(df) == [(2026, 7), (2026, 4)]
+
+
+def test_available_periods_ordena_de_mas_reciente_a_mas_antiguo():
+    df = pd.DataFrame([
+        {"Fecha de cierre": datetime(2025, 1, 1)},
+        {"Fecha de cierre": datetime(2026, 6, 1)},
+        {"Fecha de cierre": datetime(2025, 12, 1)},
+    ])
+    assert available_periods(df) == [(2026, 6), (2025, 12), (2025, 1)]
+
+
+def test_available_periods_df_vacio_devuelve_lista_vacia():
+    assert available_periods(pd.DataFrame()) == []
+
+
+def test_available_periods_sin_columnas_de_cierre_devuelve_lista_vacia():
+    df = pd.DataFrame([{"propietario": "sofia"}])
+    assert available_periods(df) == []

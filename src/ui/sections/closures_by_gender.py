@@ -7,13 +7,7 @@ from src.analytics.closures_by_gender import (
     closures_by_gender,
     available_periods,
 )
-
-
-_MONTHS_ES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
-}
+from src.ui.period_selector import format_period_label, render_period_selector
 
 _COLORES = {
     "Hombre": "#2563EB",
@@ -50,17 +44,10 @@ def render_closures_by_gender(
         st.info("No hay cierres registrados.")
         return
 
-    default = (default_year, default_month) if (default_year, default_month) in periods else periods[0]
-    options_labels = [f"{_MONTHS_ES[m]} {y}" for (y, m) in periods]
-    label_to_period = dict(zip(options_labels, periods))
-    default_label = f"{_MONTHS_ES[default[1]]} {default[0]}"
-
     col_periodo, col_filtro = st.columns([2, 2])
     with col_periodo:
-        selected_label = st.selectbox(
-            "Período",
-            options=options_labels,
-            index=options_labels.index(default_label),
+        sel_year, sel_month = render_period_selector(
+            periods, default_year, default_month,
             key=f"closures_gender_period_{default_year}_{default_month}",
         )
     with col_filtro:
@@ -71,7 +58,7 @@ def render_closures_by_gender(
             key="closures_gender_filtro",
             horizontal=True,
         )
-    sel_year, sel_month = label_to_period[selected_label]
+    selected_label = format_period_label(sel_year, sel_month)
     team = _FILTRO_A_TEAM[filtro_label]
 
     dist = closures_by_gender(df_full, sel_year, sel_month, team)

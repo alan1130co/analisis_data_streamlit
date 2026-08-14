@@ -10,12 +10,7 @@ from src.analytics.closures_by_state import (
     available_periods,
     closures_by_state,
 )
-
-_MONTHS_ES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
-}
+from src.ui.period_selector import format_period_label, render_period_selector
 
 
 def render_closures_by_state(
@@ -31,22 +26,15 @@ def render_closures_by_state(
         return
 
     periods = available_periods(df_full)
-    if not periods:
-        st.info("No hay cierres registrados.")
-        return
-
-    default = (default_year, default_month) if (default_year, default_month) in periods else periods[0]
-    options_labels = [f"{_MONTHS_ES[m]} {y}" for (y, m) in periods]
-    label_to_period = dict(zip(options_labels, periods))
-    default_label = f"{_MONTHS_ES[default[1]]} {default[0]}"
-
-    selected_label = st.selectbox(
-        "Período",
-        options=options_labels,
-        index=options_labels.index(default_label),
+    sel = render_period_selector(
+        periods, default_year, default_month,
         key=f"closures_state_period_{default_year}_{default_month}",
     )
-    sel_year, sel_month = label_to_period[selected_label]
+    if sel is None:
+        st.info("No hay cierres registrados.")
+        return
+    sel_year, sel_month = sel
+    selected_label = format_period_label(sel_year, sel_month)
 
     dist = closures_by_state(df_full, sel_year, sel_month, team)
 
