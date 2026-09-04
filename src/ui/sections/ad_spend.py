@@ -7,7 +7,14 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.analytics.ad_spend import combine_ad_spend_sources, monthly_ad_spend
+from src.analytics.ad_spend import (
+    TODOS,
+    MESES_ES,
+    anios_disponibles,
+    combine_ad_spend_sources,
+    filter_by_anio_mes,
+    monthly_ad_spend,
+)
 from src.data_sources.ad_spend_loader import AdSpendLoader
 
 
@@ -53,6 +60,12 @@ def render_ad_spend(uploaded_files) -> None:
     concatenan y se deduplican por 'Identificador de la transacción' para no
     sumar dos veces un cobro si los rangos de fecha de los archivos se
     solapan (ver `load_ad_spend_files`).
+
+    2 selectores independientes: "Año" (`key="anio_ad_spend"`) y "Mes"
+    (`key="mes_ad_spend"`), ambos con default "Todos" — con ambos en
+    "Todos" se ve la tendencia completa. Año+Mes específicos combinan con
+    AND (ver `ad_spend.filter_by_anio_mes`, compartida por las 6 gráficas
+    de esta pestaña).
     """
     st.markdown("### 💰 Gasto en pauta publicitaria (Meta Ads)")
 
@@ -78,9 +91,20 @@ def render_ad_spend(uploaded_files) -> None:
         return
 
     data = data.copy()
-    # El orden de `data` ya es cronológico (ver monthly_ad_spend) — se usa
-    # tal cual como categoryarray porque "Mes_Año" ("Enero 2026") no es
-    # ordenable alfabéticamente de forma cronológica.
+    # "Mes_Año" ya viene en orden cronológico (ver monthly_ad_spend).
+    meses_disponibles = list(data["Mes_Año"])
+    c1, c2 = st.columns(2)
+    anio_sel = c1.selectbox(
+        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
+        index=0, key="anio_ad_spend",
+    )
+    mes_sel = c2.selectbox(
+        "Mes", options=[TODOS] + list(MESES_ES.values()),
+        index=0, key="mes_ad_spend",
+    )
+    labels_permitidos = filter_by_anio_mes(meses_disponibles, anio_sel, mes_sel)
+    data = data[data["Mes_Año"].isin(labels_permitidos)]
+
     orden_meses = list(data["Mes_Año"])
 
     fig = px.bar(

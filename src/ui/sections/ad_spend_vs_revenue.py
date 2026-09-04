@@ -6,7 +6,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.analytics.ad_spend import monthly_ad_spend_with_period
+from src.analytics.ad_spend import (
+    TODOS,
+    MESES_ES,
+    anios_disponibles,
+    filter_by_anio_mes,
+    monthly_ad_spend_with_period,
+)
 from src.analytics.ad_spend_vs_closures import (
     calculate_redes_revenue_chart,
     combine_ad_spend_and_revenue,
@@ -24,6 +30,14 @@ def render_ad_spend_vs_revenue(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
     `load_ad_spend_files`, ver `src/ui/sections/ad_spend.py`).
     `df_clientify`: dataset completo de Clientify (df_unfiltered) — igual
     que el resto de gráficas históricas de esta pestaña.
+
+    2 selectores independientes: "Año" (`key="anio_ad_spend_vs_revenue"`) y
+    "Mes" (`key="mes_ad_spend_vs_revenue"`), ambos default "Todos"
+    (respetando el corte "desde enero 2025" que ya aplica
+    `combine_ad_spend_and_revenue`). `data` viene en formato largo (una
+    fila por "Concepto" — Importe/Ingreso_Redes — por mes), así que las
+    opciones del selector "Año" se arman con `.drop_duplicates()` sobre
+    "Mes_Año" para no repetir el mismo mes/año dos veces.
     """
     st.markdown(f"### {_TITLE}")
 
@@ -45,6 +59,21 @@ def render_ad_spend_vs_revenue(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
             "enero 2025 para mostrar."
         )
         return
+
+    # "Mes_Año" se repite una vez por "Concepto" (formato largo) — dedup
+    # antes de armar las opciones del selector.
+    meses_disponibles = data["Mes_Año"].drop_duplicates().tolist()
+    c1, c2 = st.columns(2)
+    anio_sel = c1.selectbox(
+        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
+        index=0, key="anio_ad_spend_vs_revenue",
+    )
+    mes_sel = c2.selectbox(
+        "Mes", options=[TODOS] + list(MESES_ES.values()),
+        index=0, key="mes_ad_spend_vs_revenue",
+    )
+    labels_permitidos = filter_by_anio_mes(meses_disponibles, anio_sel, mes_sel)
+    data = data[data["Mes_Año"].isin(labels_permitidos)]
 
     # El orden ya es cronológico (ver combine_ad_spend_and_revenue) — se
     # toma tal cual como categoryarray porque "Mes_Año" no es ordenable

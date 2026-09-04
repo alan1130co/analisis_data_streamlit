@@ -153,3 +153,49 @@ def monthly_ad_spend_with_period(df: pd.DataFrame) -> pd.DataFrame:
         .sort_values(["Año", "Mes_num"])
     )
     return grouped[_MONTHLY_WITH_PERIOD_COLUMNS].reset_index(drop=True)
+
+
+# --- Selectores independientes Año/Mes de las 6 gráficas de "Marketing e
+# Inversión" (src/ui/sections/ad_spend*.py). Funciones puras/testeables acá
+# para que las 6 compartan EXACTAMENTE la misma lógica de parseo/filtrado —
+# ninguna la reimplementa por su cuenta.
+TODOS = "Todos"
+_MESES_ES_INV = {nombre: num for num, nombre in MESES_ES.items()}
+
+
+def parse_mes_anio(label: str) -> tuple[int, int]:
+    """Convierte una etiqueta "Mes Año" (p.ej. "Marzo 2025", el formato que
+    ya arma todo este módulo vía `MESES_ES[mes] + " " + año`) de vuelta a
+    `(año, mes_num)`. Es el inverso exacto de esa construcción."""
+    mes_nombre, anio_str = label.rsplit(" ", 1)
+    return int(anio_str), _MESES_ES_INV[mes_nombre]
+
+
+def anios_disponibles(labels: list[str]) -> list[int]:
+    """Años únicos presentes en una lista de etiquetas "Mes Año", ordenados
+    ascendente — usado para armar las opciones del selector "Año" de cada
+    gráfica (cada una calcula el suyo a partir de sus propios datos, no un
+    rango hardcodeado)."""
+    return sorted({parse_mes_anio(label)[0] for label in labels})
+
+
+def filter_by_anio_mes(labels: list[str], anio: int | str, mes: str) -> list[str]:
+    """Filtra `labels` ("Mes Año") por año/mes elegidos en los 2 selectores
+    independientes. `anio`: `TODOS` o un año puntual (int). `mes`: `TODOS` o
+    un nombre de mes en español (ver `MESES_ES`). Ambos criterios se
+    combinan con AND; cualquiera de los dos en `TODOS` no filtra por ese eje.
+    Preserva el orden original de `labels`.
+
+    Año=TODOS + Mes=específico devuelve ese mes de TODOS los años presentes
+    (p.ej. "Marzo 2025" y "Marzo 2026" juntos) — comparación año contra año,
+    intencional, no un caso a excluir.
+    """
+    result = []
+    for label in labels:
+        y, m = parse_mes_anio(label)
+        if anio != TODOS and y != anio:
+            continue
+        if mes != TODOS and MESES_ES[m] != mes:
+            continue
+        result.append(label)
+    return result

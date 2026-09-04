@@ -6,7 +6,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.analytics.ad_spend import monthly_ad_spend
+from src.analytics.ad_spend import (
+    TODOS,
+    MESES_ES,
+    anios_disponibles,
+    filter_by_anio_mes,
+    monthly_ad_spend,
+)
 from src.analytics.ad_spend_vs_closures import (
     closures_from_redes_monthly,
     combine_ad_spend_and_closures,
@@ -19,6 +25,11 @@ def render_ad_spend_vs_closures(gasto_raw: pd.DataFrame, df_clientify: pd.DataFr
     `df_clientify`: dataset completo de Clientify (df_unfiltered) — esta
     gráfica cruza el histórico completo, igual que la sección de "Cierres
     por canal (Pauta directa vs Referidos)" que la precede en el dashboard.
+
+    2 selectores independientes: "Año" (`key="anio_ad_spend_vs_closures"`) y
+    "Mes" (`key="mes_ad_spend_vs_closures"`), ambos default "Todos" —
+    filtran ambos traces (barra de gasto y línea de cierres) igual (ver
+    `ad_spend.filter_by_anio_mes`, compartida por las 6 gráficas).
     """
     st.markdown("### 📊 Gasto en pauta vs cierres con origen en redes")
 
@@ -40,6 +51,22 @@ def render_ad_spend_vs_closures(gasto_raw: pd.DataFrame, df_clientify: pd.DataFr
 
     cierres_mensual = closures_from_redes_monthly(df_clientify)
     data = combine_ad_spend_and_closures(gasto_mensual, cierres_mensual)
+
+    meses_disponibles = list(data["Mes_Año"])
+    if not meses_disponibles:
+        st.info("No hay datos para mostrar.")
+        return
+    c1, c2 = st.columns(2)
+    anio_sel = c1.selectbox(
+        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
+        index=0, key="anio_ad_spend_vs_closures",
+    )
+    mes_sel = c2.selectbox(
+        "Mes", options=[TODOS] + list(MESES_ES.values()),
+        index=0, key="mes_ad_spend_vs_closures",
+    )
+    labels_permitidos = filter_by_anio_mes(meses_disponibles, anio_sel, mes_sel)
+    data = data[data["Mes_Año"].isin(labels_permitidos)]
 
     orden_meses = list(data["Mes_Año"])
 

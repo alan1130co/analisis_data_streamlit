@@ -2,10 +2,14 @@
 import pandas as pd
 
 from src.analytics.ad_spend import (
+    TODOS,
     _clean_importe,
+    anios_disponibles,
     combine_ad_spend_sources,
+    filter_by_anio_mes,
     monthly_ad_spend,
     monthly_ad_spend_with_period,
+    parse_mes_anio,
     prepare_ad_spend,
 )
 
@@ -151,3 +155,43 @@ def test_monthly_ad_spend_with_period_df_vacio():
     out = monthly_ad_spend_with_period(pd.DataFrame())
     assert out.empty
     assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe"]
+
+
+# ---------------------------------------------------------------------------
+# parse_mes_anio / anios_disponibles / filter_by_anio_mes — selectores
+# independientes Año/Mes de las 6 gráficas de "Marketing e Inversión"
+# ---------------------------------------------------------------------------
+
+_LABELS_2_ANIOS = ["Marzo 2025", "Abril 2025", "Marzo 2026", "Septiembre 2026"]
+
+
+def test_parse_mes_anio():
+    assert parse_mes_anio("Marzo 2025") == (2025, 3)
+    assert parse_mes_anio("Septiembre 2026") == (2026, 9)
+
+
+def test_anios_disponibles_unicos_y_ordenados():
+    assert anios_disponibles(_LABELS_2_ANIOS) == [2025, 2026]
+
+
+def test_filter_by_anio_mes_todos_todos_devuelve_todo():
+    assert filter_by_anio_mes(_LABELS_2_ANIOS, TODOS, TODOS) == _LABELS_2_ANIOS
+
+
+def test_filter_by_anio_mes_anio_especifico_mes_todos():
+    """Año=2025, Mes=Todos → todos los meses de 2025."""
+    assert filter_by_anio_mes(_LABELS_2_ANIOS, 2025, TODOS) == ["Marzo 2025", "Abril 2025"]
+
+
+def test_filter_by_anio_mes_anio_todos_mes_especifico():
+    """Año=Todos, Mes=Marzo → Marzo de TODOS los años (comparación año
+    contra año, caso intencional, no un error)."""
+    assert filter_by_anio_mes(_LABELS_2_ANIOS, TODOS, "Marzo") == ["Marzo 2025", "Marzo 2026"]
+
+
+def test_filter_by_anio_mes_anio_y_mes_especificos():
+    assert filter_by_anio_mes(_LABELS_2_ANIOS, 2026, "Septiembre") == ["Septiembre 2026"]
+
+
+def test_filter_by_anio_mes_combinacion_sin_datos_devuelve_vacio():
+    assert filter_by_anio_mes(_LABELS_2_ANIOS, 2025, "Septiembre") == []
