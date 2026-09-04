@@ -18,11 +18,16 @@ def render_pauta_vs_referidos(
     default_year: int,
     default_month: int,
     team: str | None = None,
-) -> None:
+) -> tuple[int, int] | None:
     """`df_full` ya viene filtrado por equipo desde `app.py`. Desde
     2026-08-14 tiene su propio `st.selectbox` de "Período" — ver el mismo
     razonamiento (y el mismo fix de desincronización al sacar el antiguo
-    parámetro `df_period`) en `cierres_por_canal.py`."""
+    parámetro `df_period`) en `cierres_por_canal.py`.
+
+    Devuelve el `(year, month)` que resolvió su propio selector (o `None` si
+    no hay períodos disponibles) — así `app.py` puede reutilizarlo para
+    `render_pauta_vs_referidos_antiguedad`, que muestra el mismo período sin
+    pedir un selector propio nuevo (regla 2026-09-03)."""
     st.subheader("📡 Pauta vs Referidos")
 
     periods = available_periods(df_full)
@@ -32,7 +37,7 @@ def render_pauta_vs_referidos(
     )
     if sel is None:
         st.info("No hay cierres registrados.")
-        return
+        return None
     year, month = sel
 
     data = pauta_vs_referidos(df_full, df_full, year, month)
@@ -77,3 +82,5 @@ def render_pauta_vs_referidos(
     c1.metric("Pauta",     f"{int(pauta_row['Cantidad']):,}".replace(",", "."))
     c2.metric("Referidos", f"{int(ref_row['Cantidad']):,}".replace(",", "."))
     c3.metric("Total",     f"{total:,}".replace(",", "."))
+
+    return year, month

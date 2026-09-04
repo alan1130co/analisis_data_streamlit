@@ -5,10 +5,15 @@ import pandas as pd
 import pytest
 
 from src.analytics.breakdowns import (
+    COHORTE_MES_ANTERIOR,
+    COHORTE_MISMO_MES,
     available_periods,
     cierres_por_canal,
+    cierres_whatsapp_facebook_cp_por_mes_origen,
     efficiency_by_advisor,
     pauta_vs_referidos,
+    pauta_vs_referidos_por_antiguedad,
+    pauta_vs_referidos_por_antiguedad_detalle,
 )
 
 
@@ -250,6 +255,258 @@ def test_pauta_vs_referidos_sin_fuga_coincide_con_total_cierres_general(df_perio
     assert total_grafico == total_kpi, (
         f"Fuga detectada: gráfico={total_grafico}, KPI total_cierres_general={total_kpi}"
     )
+
+
+# ---------------------------------------------------------------------------
+# pauta_vs_referidos_por_antiguedad
+# ---------------------------------------------------------------------------
+
+def test_pauta_vs_referidos_por_antiguedad_lead_creado_mismo_mes(df_period, df_full):
+    """Lead 0 (sofia, Pauta) y Lead 2 (carlos, Referidos) fueron creados Y
+    cerraron en abril 2026 → van en la cohorte 'Llegaron y cerraron este mes'."""
+    result = pauta_vs_referidos_por_antiguedad(df_period, df_full, 2026, 4)
+    mismo_mes = result[result["Cohorte"] == COHORTE_MISMO_MES].set_index("Origen")["Cantidad"]
+    assert int(mismo_mes["Pauta"]) == 1
+    assert int(mismo_mes["Referidos"]) == 1
+
+
+def test_pauta_vs_referidos_por_antiguedad_lead_creado_mes_anterior(df_period, df_full):
+    """Lead 3 fue creado en enero 2024 y su 2do cierre cae en abril 2026 →
+    va en la cohorte 'Llegaron antes y cerraron este mes', clasificado Pauta."""
+    result = pauta_vs_referidos_por_antiguedad(df_period, df_full, 2026, 4)
+    antes = result[result["Cohorte"] == COHORTE_MES_ANTERIOR].set_index("Origen")["Cantidad"]
+    assert int(antes["Pauta"]) == 1
+    assert int(antes["Referidos"]) == 0
+
+
+def test_pauta_vs_referidos_por_antiguedad_mix_pauta_y_referidos():
+    """Mezcla de Pauta y Referidos en AMBAS cohortes — el fixture compartido
+    solo cubre Referidos en 'mismo mes' y Pauta en 'antes', así que este test
+    usa un DataFrame dedicado para cubrir las 4 combinaciones."""
+    df = pd.DataFrame([
+        # Mismo mes: 1 Pauta + 1 Referidos
+        {"creado": datetime(2026, 4, 1), "propietario": "a", "estado": "activo",
+         "canal online": "paid social", "Canal offline": "clientify - facebook",
+         "Origen de la pauta": "facebook", "Cantidad de cierres": 1.0,
+         "Fecha de cierre": datetime(2026, 4, 5),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        {"creado": datetime(2026, 4, 2), "propietario": "b", "estado": "activo",
+         "canal online": "inbox-referral", "Canal offline": "referido - amigo",
+         "Origen de la pauta": None, "Cantidad de cierres": 1.0,
+         "Fecha de cierre": datetime(2026, 4, 6),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Antes (creados en meses anteriores): 1 Pauta + 1 Referidos
+        {"creado": datetime(2026, 1, 1), "propietario": "c", "estado": "activo",
+         "canal online": "paid social", "Canal offline": "clientify - instagram",
+         "Origen de la pauta": "instagram", "Cantidad de cierres": 1.0,
+         "Fecha de cierre": datetime(2026, 4, 10),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        {"creado": datetime(2025, 12, 1), "propietario": "d", "estado": "activo",
+         "canal online": "inbox-referral", "Canal offline": "referido - familia",
+         "Origen de la pauta": None, "Cantidad de cierres": 1.0,
+         "Fecha de cierre": datetime(2026, 4, 12),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+    ])
+    result = pauta_vs_referidos_por_antiguedad(df, df, 2026, 4)
+
+    def cantidad(cohorte: str, origen: str) -> int:
+        row = result[(result["Cohorte"] == cohorte) & (result["Origen"] == origen)]
+        return int(row["Cantidad"].iloc[0])
+
+    assert cantidad(COHORTE_MISMO_MES, "Pauta") == 1
+    assert cantidad(COHORTE_MISMO_MES, "Referidos") == 1
+    assert cantidad(COHORTE_MES_ANTERIOR, "Pauta") == 1
+    assert cantidad(COHORTE_MES_ANTERIOR, "Referidos") == 1
+
+
+def test_pauta_vs_referidos_por_antiguedad_suma_coincide_con_pauta_vs_referidos(df_period, df_full):
+    """Cantidad.sum() del desglose por antigüedad debe coincidir EXACTAMENTE
+    con el total de `pauta_vs_referidos` — ningún cierre debe perderse al
+    agregar la dimensión de antigüedad (mismo criterio de integridad que
+    `test_pauta_vs_referidos_sin_fuga_coincide_con_total_cierres_general`)."""
+    total_original = int(pauta_vs_referidos(df_period, df_full, 2026, 4)["Cantidad"].sum())
+    total_antiguedad = int(pauta_vs_referidos_por_antiguedad(df_period, df_full, 2026, 4)["Cantidad"].sum())
+    assert total_antiguedad == total_original
+
+
+def test_pauta_vs_referidos_por_antiguedad_df_period_vacio_devuelve_ceros():
+    empty = pd.DataFrame(columns=["creado"])
+    result = pauta_vs_referidos_por_antiguedad(empty, empty, 2026, 4)
+    assert int(result["Cantidad"].sum()) == 0
+
+
+# ---------------------------------------------------------------------------
+# pauta_vs_referidos_por_antiguedad_detalle
+# ---------------------------------------------------------------------------
+
+def test_detalle_antiguedad_cierre_creado_mismo_mes(df_period, df_full):
+    """Lead 0 (sofia, creado 1 abril, cierre 5 abril) debe aparecer con
+    Cohorte 'mismo mes' y Origen Pauta."""
+    result = pauta_vs_referidos_por_antiguedad_detalle(df_period, df_full, 2026, 4)
+    fila = result[(result["Fecha de creación"] == datetime(2026, 4, 1)) & (result["Origen"] == "Pauta")]
+    assert len(fila) == 1
+    assert fila.iloc[0]["Cohorte"] == COHORTE_MISMO_MES
+    assert fila.iloc[0]["Fecha de cierre"] == datetime(2026, 4, 5)
+
+
+def test_detalle_antiguedad_cierre_creado_mes_anterior(df_period, df_full):
+    """Lead 3 (creado enero 2024, 2do cierre abril 2026) debe aparecer con
+    Cohorte 'antes' y la fecha de cierre correcta (el 2do cierre, no el 1ro
+    de enero 2024, que no cae en el período filtrado)."""
+    result = pauta_vs_referidos_por_antiguedad_detalle(df_period, df_full, 2026, 4)
+    fila = result[result["Fecha de creación"] == datetime(2024, 1, 15)]
+    assert len(fila) == 1
+    assert fila.iloc[0]["Cohorte"] == COHORTE_MES_ANTERIOR
+    assert fila.iloc[0]["Origen"] == "Pauta"
+    assert fila.iloc[0]["Fecha de cierre"] == datetime(2026, 4, 20)
+
+
+def test_detalle_antiguedad_total_filas_coincide_con_total_agregado(df_period, df_full):
+    """El número de filas del detalle debe coincidir EXACTAMENTE con
+    Cantidad.sum() de pauta_vs_referidos_por_antiguedad (la misma barra
+    apilada de arriba) — una fila por cierre, sin fugas ni duplicados."""
+    total_agregado = int(pauta_vs_referidos_por_antiguedad(df_period, df_full, 2026, 4)["Cantidad"].sum())
+    result = pauta_vs_referidos_por_antiguedad_detalle(df_period, df_full, 2026, 4)
+    assert len(result) == total_agregado
+
+
+def test_detalle_antiguedad_ordenado_por_fecha_creacion_ascendente(df_period, df_full):
+    result = pauta_vs_referidos_por_antiguedad_detalle(df_period, df_full, 2026, 4)
+    fechas = list(result["Fecha de creación"])
+    assert fechas == sorted(fechas)
+
+
+def test_detalle_antiguedad_sin_columna_nombre_cliente_vacio():
+    """Si el DataFrame no trae 'nombre', 'Cliente' queda vacío en vez de romper
+    (mismo criterio defensivo que closures_by_gender.py)."""
+    df = pd.DataFrame([{
+        "creado": datetime(2026, 4, 1), "propietario": "a", "estado": "activo",
+        "canal online": "paid social", "Canal offline": "clientify - facebook",
+        "Origen de la pauta": "facebook", "Cantidad de cierres": 1.0,
+        "Fecha de cierre": datetime(2026, 4, 5),
+        "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+    }])
+    result = pauta_vs_referidos_por_antiguedad_detalle(df, df, 2026, 4)
+    assert len(result) == 1
+    assert result.iloc[0]["Cliente"] == ""
+
+
+def test_detalle_antiguedad_df_period_vacio_devuelve_columnas_vacias():
+    empty = pd.DataFrame(columns=["creado"])
+    result = pauta_vs_referidos_por_antiguedad_detalle(empty, empty, 2026, 4)
+    assert result.empty
+    assert list(result.columns) == ["Cliente", "Fecha de creación", "Fecha de cierre", "Origen", "Cohorte"]
+
+
+# ---------------------------------------------------------------------------
+# cierres_whatsapp_facebook_cp_por_mes_origen
+# ---------------------------------------------------------------------------
+
+def _wf_lead(canal_offline, creado, fecha_cierre, estado="activo", cantidad_cierres=1.0):
+    return {
+        "creado": creado, "propietario": "asesor", "estado": estado,
+        "canal online": None, "Canal offline": canal_offline, "Origen de la pauta": None,
+        "Motivo de no cierre": "cliente potencial", "Cantidad de cierres": cantidad_cierres,
+        "Fecha de cierre": fecha_cierre,
+        "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+    }
+
+
+def test_wf_por_mes_origen_un_solo_mes_de_origen():
+    """3 cierres de abril 2026, todos de leads creados en el mismo mes de
+    origen (marzo 2026) → una sola fila por canal, sin desglosar por más meses."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 3, 5), datetime(2026, 4, 2)),
+        _wf_lead("clientify - whatsapp", datetime(2026, 3, 10), datetime(2026, 4, 8)),
+        _wf_lead("formulario de facebook - cliente potencial", datetime(2026, 3, 20), datetime(2026, 4, 15)),
+    ])
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 4)
+    assert set(result["Mes de Origen"]) == {"2026-03"}
+    por_canal = result.set_index("Canal")["Cantidad"]
+    assert int(por_canal["Clientify - Whatsapp"]) == 2
+    assert int(por_canal["Formulario de Facebook - Cliente Potencial"]) == 1
+
+
+def test_wf_por_mes_origen_varios_meses_de_origen_ordenados_cronologicamente():
+    """Cierres de agosto 2026 provenientes de leads creados en junio, julio y
+    agosto — deben aparecer como 3 meses de origen distintos, en orden
+    cronológico ascendente."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 6, 1), datetime(2026, 8, 3)),
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 5)),
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 15), datetime(2026, 8, 6)),
+        _wf_lead("clientify - whatsapp", datetime(2026, 8, 1), datetime(2026, 8, 20)),
+    ])
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 8)
+    meses = list(result["Mes de Origen"])
+    assert meses == sorted(meses)
+    por_mes = result.set_index("Mes de Origen")["Cantidad"]
+    assert int(por_mes["2026-06"]) == 1
+    assert int(por_mes["2026-07"]) == 2
+    assert int(por_mes["2026-08"]) == 1
+
+
+def test_wf_por_mes_origen_mezcla_de_los_2_canales_en_el_mismo_mes():
+    """Un mismo mes de origen con cierres de ambos canales debe dar 2 filas
+    (una por canal), no una sola fila fusionada."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 3)),
+        _wf_lead("formulario de facebook - cliente potencial", datetime(2026, 7, 2), datetime(2026, 8, 4)),
+        _wf_lead("formulario de facebook - cliente potencial", datetime(2026, 7, 3), datetime(2026, 8, 5)),
+    ])
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 8)
+    assert len(result) == 2
+    julio = result[result["Mes de Origen"] == "2026-07"].set_index("Canal")["Cantidad"]
+    assert int(julio["Clientify - Whatsapp"]) == 1
+    assert int(julio["Formulario de Facebook - Cliente Potencial"]) == 2
+
+
+def test_wf_por_mes_origen_excluye_otros_canales():
+    """Un cierre de 'Clientify - Facebook' (Pauta, pero no uno de los 2
+    canales exactos) no debe sumar a ninguna fila del resultado."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 3)),
+        _wf_lead("clientify - facebook", datetime(2026, 7, 1), datetime(2026, 8, 3)),
+    ])
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 8)
+    assert int(result["Cantidad"].sum()) == 1
+    assert "Clientify - Facebook" not in set(result["Canal"])
+
+
+def test_wf_por_mes_origen_excluye_cierres_con_estado_inactivo():
+    """Mismo criterio de cierre válido que el resto del módulo: estado ==
+    'inactivo' no debe contar."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 3), estado="inactivo"),
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 4), estado="activo"),
+    ])
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 8)
+    assert int(result["Cantidad"].sum()) == 1
+
+
+def test_wf_por_mes_origen_total_coincide_con_suma_de_ambos_canales_en_el_periodo():
+    """El total del desglose debe coincidir con contar a mano los cierres
+    válidos de agosto 2026 de estos 2 canales, sin pasar por la función."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 6, 1), datetime(2026, 8, 1)),
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 2)),
+        _wf_lead("formulario de facebook - cliente potencial", datetime(2026, 7, 15), datetime(2026, 8, 3)),
+        _wf_lead("formulario de facebook - cliente potencial", datetime(2026, 8, 1), datetime(2026, 8, 4)),
+        # Fuera del período (julio, no agosto) — no debe contarse.
+        _wf_lead("clientify - whatsapp", datetime(2026, 6, 1), datetime(2026, 7, 1)),
+        # Canal distinto — no debe contarse.
+        _wf_lead("referido - amigo", datetime(2026, 7, 1), datetime(2026, 8, 5)),
+    ])
+    esperado = 4
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 8)
+    assert int(result["Cantidad"].sum()) == esperado
+
+
+def test_wf_por_mes_origen_df_period_vacio_devuelve_columnas_vacias():
+    empty = pd.DataFrame(columns=["creado"])
+    result = cierres_whatsapp_facebook_cp_por_mes_origen(empty, empty, 2026, 4)
+    assert result.empty
+    assert list(result.columns) == ["Mes de Origen", "Canal", "Cantidad"]
 
 
 # ---------------------------------------------------------------------------

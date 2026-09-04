@@ -24,6 +24,12 @@ _CLOSE_COLS = [
     "Fecha de 4to cierre",
 ]
 
+# Etiquetas de cohorte para pauta_vs_referidos_por_antiguedad — exportadas
+# para que la UI (src/ui/sections/pauta_vs_referidos_antiguedad.py) y los
+# tests no hardcodeen el string.
+COHORTE_MISMO_MES = "Llegaron y cerraron este mes"
+COHORTE_MES_ANTERIOR = "Llegaron antes y cerraron este mes"
+
 
 def available_periods(df_full: pd.DataFrame) -> list[tuple[int, int]]:
     """Lista de (año, mes) con al menos un cierre (cualquiera de las 4
@@ -231,6 +237,183 @@ def pauta_vs_referidos(
         {"Origen": "Pauta",     "Cantidad": pauta_n, "Porcentaje": pct(pauta_n)},
         {"Origen": "Referidos", "Cantidad": ref_n,   "Porcentaje": pct(ref_n)},
     ])
+
+
+def pauta_vs_referidos_por_antiguedad(
+    df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int
+) -> pd.DataFrame:
+    """
+    Mismo universo de cierres que `pauta_vs_referidos` (válidos del mes,
+    clasificados Pauta/Referidos vía `is_marketing`), desglosado ADEMÁS por
+    si el lead se creó ese mismo mes o antes (columna "creado").
+
+    `year`/`month` son OBLIGATORIOS: el mismo período ya resuelto por el
+    selector de la sección "Pauta vs Referidos" (no se infiere ni se pide un
+    período propio — ver `render_pauta_vs_referidos_antiguedad`).
+
+    El segundo balde (`COHORTE_MES_ANTERIOR`) es el COMPLEMENTO exacto del
+    primero dentro de cada cierre válido del mes — no una condición
+    independiente tipo "creado < inicio del mes" — para que `Cantidad.sum()`
+    siempre dé el mismo total que `pauta_vs_referidos`, sin depender de que
+    "creado" nunca venga nulo o posterior a la fecha de cierre (algo que no
+    debería pasar en datos reales, pero así no hay riesgo de fuga).
+
+    Columnas: Cohorte, Origen, Cantidad.
+    """
+    empty = pd.DataFrame([
+        {"Cohorte": COHORTE_MISMO_MES, "Origen": "Pauta", "Cantidad": 0},
+        {"Cohorte": COHORTE_MISMO_MES, "Origen": "Referidos", "Cantidad": 0},
+        {"Cohorte": COHORTE_MES_ANTERIOR, "Origen": "Pauta", "Cantidad": 0},
+        {"Cohorte": COHORTE_MES_ANTERIOR, "Origen": "Referidos", "Cantidad": 0},
+    ])
+    if df_period.empty or "creado" not in df_full.columns:
+        return empty
+
+    mkt_mask_full = get_mask(df_full, "_is_marketing", is_marketing)
+    active_full = valid_closure_estado_mask(df_full)
+    creado = pd.to_datetime(df_full["creado"], errors="coerce")
+    same_month_mask = (creado.dt.year == year) & (creado.dt.month == month)
+
+    counts = {
+        (COHORTE_MISMO_MES, "Pauta"): 0,
+        (COHORTE_MISMO_MES, "Referidos"): 0,
+        (COHORTE_MES_ANTERIOR, "Pauta"): 0,
+        (COHORTE_MES_ANTERIOR, "Referidos"): 0,
+    }
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        dt = pd.to_datetime(df_full[col], errors="coerce")
+        in_month = (dt.dt.year == year) & (dt.dt.month == month) & active_full
+        mismo_mes = in_month & same_month_mask
+        antes = in_month & ~same_month_mask
+        counts[(COHORTE_MISMO_MES, "Pauta")] += int((mismo_mes & mkt_mask_full).sum())
+        counts[(COHORTE_MISMO_MES, "Referidos")] += int((mismo_mes & ~mkt_mask_full).sum())
+        counts[(COHORTE_MES_ANTERIOR, "Pauta")] += int((antes & mkt_mask_full).sum())
+        counts[(COHORTE_MES_ANTERIOR, "Referidos")] += int((antes & ~mkt_mask_full).sum())
+
+    return pd.DataFrame([
+        {"Cohorte": cohorte, "Origen": origen, "Cantidad": cantidad}
+        for (cohorte, origen), cantidad in counts.items()
+    ])
+
+
+_DETALLE_ANTIGUEDAD_COLUMNS = ["Cliente", "Fecha de creación", "Fecha de cierre", "Origen", "Cohorte"]
+
+
+def pauta_vs_referidos_por_antiguedad_detalle(
+    df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int
+) -> pd.DataFrame:
+    """
+    Detalle fila-por-fila del mismo universo que agrega
+    `pauta_vs_referidos_por_antiguedad`: un registro por cada CIERRE válido
+    del mes (no por lead — un lead con 2 cierres en el mismo mes, p.ej. 1er y
+    2do cierre, aporta 2 filas, igual que ya cuenta 2 en la versión agregada).
+
+    `year`/`month` son OBLIGATORIOS: el mismo período ya resuelto por el
+    selector de "Pauta vs Referidos" (ver docstring de la función hermana
+    arriba — no se infiere ni se pide un período propio).
+
+    "Cliente" viene de la columna "nombre" del Excel (la misma que usa
+    `closures_by_gender.py`) si existe; si no, queda vacío — no rompe el
+    resto de la tabla, mismo criterio defensivo que ya usa esa sección.
+
+    Columnas: Cliente, Fecha de creación, Fecha de cierre, Origen, Cohorte.
+    Ordenado por "Fecha de creación" ascendente (más antiguos primero).
+    """
+    empty = pd.DataFrame(columns=_DETALLE_ANTIGUEDAD_COLUMNS)
+    if df_period.empty or "creado" not in df_full.columns:
+        return empty
+
+    mkt_mask_full = get_mask(df_full, "_is_marketing", is_marketing)
+    active_full = valid_closure_estado_mask(df_full)
+    creado = pd.to_datetime(df_full["creado"], errors="coerce")
+    same_month_mask = (creado.dt.year == year) & (creado.dt.month == month)
+    tiene_nombre = "nombre" in df_full.columns
+
+    rows = []
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        dt = pd.to_datetime(df_full[col], errors="coerce")
+        in_month = (dt.dt.year == year) & (dt.dt.month == month) & active_full
+        sub = df_full[in_month]
+        if sub.empty:
+            continue
+        for idx, row in sub.iterrows():
+            rows.append({
+                "Cliente": _safe_str(row.get("nombre", "")) if tiene_nombre else "",
+                "Fecha de creación": creado.loc[idx],
+                "Fecha de cierre": dt.loc[idx],
+                "Origen": "Pauta" if mkt_mask_full.loc[idx] else "Referidos",
+                "Cohorte": COHORTE_MISMO_MES if same_month_mask.loc[idx] else COHORTE_MES_ANTERIOR,
+            })
+
+    if not rows:
+        return empty
+
+    result = pd.DataFrame(rows, columns=_DETALLE_ANTIGUEDAD_COLUMNS)
+    return result.sort_values("Fecha de creación", ascending=True).reset_index(drop=True)
+
+
+_CANALES_WHATSAPP_FACEBOOK_CP = {
+    "clientify - whatsapp": "Clientify - Whatsapp",
+    "formulario de facebook - cliente potencial": "Formulario de Facebook - Cliente Potencial",
+}
+
+
+def cierres_whatsapp_facebook_cp_por_mes_origen(
+    df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int
+) -> pd.DataFrame:
+    """Cierres válidos del mes (mismo criterio que `pauta_vs_referidos`:
+    estado != "inactivo", suma de las 4 fechas de cierre) restringidos a
+    leads cuyo "Canal offline" sea EXACTAMENTE "Clientify - Whatsapp" o
+    "Formulario de Facebook - Cliente Potencial" (valores confirmados contra
+    el Excel real 2026-09-04), agrupados por mes/año de creación del lead
+    ("creado") — no la cohorte binaria mismo-mes/antes de
+    `pauta_vs_referidos_por_antiguedad`, sino cada mes de origen individual.
+
+    `year`/`month` son OBLIGATORIOS: el mismo período ya resuelto por el
+    selector de la sección "Pauta vs Referidos" (mismo patrón que las
+    funciones hermanas de arriba).
+
+    Columnas: "Mes de Origen" (str, formato "YYYY-MM"), "Canal", "Cantidad".
+    Formato largo, ordenado cronológicamente ascendente por Mes de Origen.
+    Si una combinación (mes, canal) no tuvo cierres, simplemente no aparece
+    en el resultado (la UI la rellena con 0 al armar las barras).
+    """
+    empty = pd.DataFrame(columns=["Mes de Origen", "Canal", "Cantidad"])
+    if df_period.empty or "creado" not in df_full.columns or "Canal offline" not in df_full.columns:
+        return empty
+
+    active_full = valid_closure_estado_mask(df_full)
+    canal_off = df_full["Canal offline"].apply(_safe_str).str.strip().str.lower()
+    canal_mask = canal_off.isin(_CANALES_WHATSAPP_FACEBOOK_CP.keys())
+    creado = pd.to_datetime(df_full["creado"], errors="coerce")
+    mes_origen = creado.dt.strftime("%Y-%m")
+
+    frames = []
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        dt = pd.to_datetime(df_full[col], errors="coerce")
+        in_month = (dt.dt.year == year) & (dt.dt.month == month) & active_full & canal_mask
+        if not in_month.any():
+            continue
+        frames.append(pd.DataFrame({
+            "Mes de Origen": mes_origen[in_month],
+            "Canal": canal_off[in_month].map(_CANALES_WHATSAPP_FACEBOOK_CP),
+        }))
+
+    if not frames:
+        return empty
+
+    all_rows = pd.concat(frames, ignore_index=True).dropna(subset=["Mes de Origen"])
+    if all_rows.empty:
+        return empty
+
+    out = all_rows.groupby(["Mes de Origen", "Canal"]).size().reset_index(name="Cantidad")
+    return out.sort_values("Mes de Origen", ascending=True).reset_index(drop=True)
 
 
 def cierres_por_canal(
