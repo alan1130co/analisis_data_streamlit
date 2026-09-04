@@ -78,5 +78,5 @@ def render_funnel(df_full: pd.DataFrame, default_year: int, default_month: int) 
 
     display = data.copy()
     display["% Eficiencia Real"] = display["% Eficiencia Real"].apply(format_percent_raw)
-    display["% Efic. Global"] = display["% Efic. Global"].apply(format_percent_raw)
+    display["% Efic. Bruta"] = display["% Efic. Bruta"].apply(format_percent_raw)
     st.dataframe(display, use_container_width=True, hide_index=True)
