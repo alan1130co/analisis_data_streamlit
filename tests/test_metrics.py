@@ -60,6 +60,52 @@ def test_creados(sample_df):
     assert m.creados == 3
 
 
+def test_creados_excluye_a_cesar_augusto(sample_df):
+    """Regla 2026-09-03: 'Creados del mes' excluye a César Augusto (volumen
+    atípico de comentarios/ruido en redes, no leads comerciales reales) —
+    sample_df (3 leads normales) + 1 lead de César debe seguir dando
+    creados == 3, no 4. 'Leads Orgánicos y TikTok' NO cambió: sigue sumando
+    a César completo (esa tarjeta se confirmó explícitamente sin tocar)."""
+    cesar_lead = {
+        "creado": datetime(2026, 4, 20), "propietario": "Cesar Augusto Perez Tafur",
+        "estado": "en transito", "Motivo de no cierre": None,
+        "canal online": None, "Canal offline": "Orgánico", "Origen de la pauta": None,
+        "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
+        "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+    }
+    df = pd.concat([sample_df, pd.DataFrame([cesar_lead])], ignore_index=True)
+    m = compute_all_metrics(df, df)
+    assert m.creados == 3
+    assert m.leads_organico_tiktok == 1
+
+
+def test_leads_clientify_whatsapp_y_formulario_facebook_cp_cuentan_por_canal_offline_exacto():
+    """2026-09-04: 2 tarjetas nuevas que cuentan leads por valor EXACTO de
+    'Canal offline' (mismo patrón que 'Creados del mes': excluyen a César
+    Augusto). Solo debe matchear el valor exacto, no otros canales de Pauta
+    (ej. 'Clientify - Facebook' no debe sumar a ninguna de las 2)."""
+    df = pd.DataFrame([
+        _lead("Clientify - Whatsapp", "sofia"),
+        _lead("Clientify - Whatsapp", "ana"),
+        _lead("Formulario de Facebook - Cliente Potencial", "carlos"),
+        _lead("Clientify - Facebook", "diana"),  # Pauta, pero no debe contar en ninguna de las 2 tarjetas
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_clientify_whatsapp == 2
+    assert m.leads_formulario_facebook_cp == 1
+
+
+def test_leads_clientify_whatsapp_y_formulario_facebook_cp_excluyen_a_cesar():
+    """Mismo criterio que 'Creados del mes': un lead de César Augusto con
+    Canal offline == 'Clientify - Whatsapp' no debe sumar a la tarjeta."""
+    df = pd.DataFrame([
+        _lead("Clientify - Whatsapp", "Cesar Augusto Perez Tafur"),
+        _lead("Clientify - Whatsapp", "sofia"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_clientify_whatsapp == 1
+
+
 def test_asignados_solo_asesores_comerciales(sample_df):
     # Sofia y Ana son Asesores Comerciales; el 3er lead no tiene propietario.
     m = compute_all_metrics(sample_df, sample_df)
@@ -619,19 +665,54 @@ def test_calificados_cierre_real_cuenta_sin_importar_motivo_ni_canal():
     assert m.no_calificados == 0
 
 
-def test_calificados_cesar_ya_no_tiene_excepcion():
-    """La regla estricta ya NO exime a César Augusto: motivo vacío sin
-    cierre real también lo manda a No calificados, igual que cualquier otro
-    asesor. Esta exención existía en iteraciones anteriores de la regla de
-    Calificados y fue eliminada explícitamente — distinto de su regla de
-    clasificación en la bolsa 'Leads Orgánicos y TikTok' (Suma 1, 'cuenta
-    sin importar canal ni estado'), que NO se tocó en este cambio."""
+def test_calificados_cesar_excluido_por_completo_de_asignados():
+    """SUPERSEDE la regla 2026-08-12c (abajo el historial): esa iteración
+    solo quitó la excepción de César DENTRO de `is_qualified_mask` (motivo
+    vacío sin cierre → no_calificados=1, igual que cualquier asesor). La
+    regla 2026-09-03 va más allá: César se excluye COMPLETO del universo de
+    Asignados (`asignado_mask` en `compute_all_metrics`, exclusión LOCAL —
+    `is_qualified_mask`/`is_asesor_comercial` no se tocaron), así que ahora
+    no aporta NI a calificados NI a no_calificados — sigue completo en la
+    bolsa 'Leads Orgánicos y TikTok' (Suma 1), que no se tocó en este cambio."""
     df = pd.DataFrame([
         _lead("Orgánico", "Cesar Augusto Perez Tafur", motivo=None),
     ])
     m = compute_all_metrics(df, df)
+    assert m.asignados == 0
     assert m.calificados == 0
-    assert m.no_calificados == 1
+    assert m.no_calificados == 0
+    assert m.leads_organico_tiktok == 1
+
+
+def test_asignados_calificados_no_calificados_excluyen_a_cesar_augusto_salvo_cierre_real():
+    """Regla 2026-09-03b: César se excluye de Asignados/Calificados/No
+    calificados SALVO que haya tenido un cierre real ('Cantidad de cierres'
+    >= 1) — en ese caso SÍ cuenta en Asignados, y automáticamente en
+    Calificados (la misma señal de cierre real que lo mete a Asignados es
+    la que usa `is_qualified_mask` para calificarlo). Un asesor comercial
+    normal, para contraste, sigue entrando sin cambios."""
+    _base = {
+        "canal online": None, "Canal offline": "Orgánico", "Origen de la pauta": None,
+        "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+        "estado": "en transito",
+    }
+    df = pd.DataFrame([
+        # César sin motivo diligenciado ni cierre real → excluido de Asignados.
+        {**_base, "creado": datetime(2026, 4, 1), "propietario": "Cesar Augusto Perez Tafur",
+         "Motivo de no cierre": None, "Cantidad de cierres": None, "Fecha de cierre": pd.NaT},
+        # César CON cierre real → SÍ entra a Asignados, y a Calificados.
+        {**_base, "creado": datetime(2026, 4, 2), "propietario": "Cesar Augusto Perez Tafur",
+         "Motivo de no cierre": None, "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5)},
+        # Asesor comercial normal, calificado — para contraste, sin cambios.
+        {**_base, "creado": datetime(2026, 4, 3), "propietario": "Sofia de la Hoz",
+         "Motivo de no cierre": "cliente potencial", "Cantidad de cierres": None, "Fecha de cierre": pd.NaT},
+    ])
+    m = compute_all_metrics(df, df)
+    # Asignados = César-con-cierre + Sofía (César-sin-cierre queda afuera).
+    assert m.asignados == 2
+    # Calificados = ambos: César por cierre real, Sofía por motivo QUALIFIED.
+    assert m.calificados == 2
+    assert m.no_calificados == 0
 
 
 def test_leads_organico_tiktok_sigue_exigiendo_organico_estricto_y_motivo():
@@ -779,52 +860,65 @@ def test_eficiencia_bruta_formula():
 # Tarjetas KPI
 # ---------------------------------------------------------------------------
 
-def test_get_kpi_definitions_todos_devuelve_10_tarjetas():
-    """Layout de 10 tarjetas (2026-07-03c): Leads Pauta fue reemplazada por
-    las 3 tarjetas de cierres desglosados (Pauta/Referidos/Adicionales) + Total."""
+def test_get_kpi_definitions_todos_devuelve_11_tarjetas():
+    """Layout de 11 tarjetas (2026-09-03c): las 3 tarjetas de cierres por
+    orden de cierre (Pauta(M)/Referidos(R)/Adicionales) fueron reemplazadas
+    por 4 tarjetas desglosadas por canal Y por primer-cierre-vs-re-cierre."""
     from src.analytics.kpis import get_kpi_definitions
-    assert len(get_kpi_definitions("Todos")) == 10
+    assert len(get_kpi_definitions("Todos")) == 13
 
 
-def test_kpi_todos_incluye_tarjetas_en_orden_2026_07_03c():
-    """Orden (2026-07-03c, eficiencias renombradas 2026-07-03i): Creados,
-    Leads Organico+TikTok (unificado), Calificados, No calificados,
-    Cierres Pauta (M), Cierres Referidos (R), Cierres Adicionales,
-    Total Cierres, % Eficiencia Real, % Eficiencia Global.
+def test_kpi_todos_incluye_tarjetas_en_orden_2026_09_03c():
+    """Orden (2026-09-03c, eficiencias renombradas 2026-07-03i; 2 tarjetas de
+    Canal offline agregadas 2026-09-04): Creados, Leads Organico+TikTok
+    (unificado), Calificados, No calificados, Cierres de Pauta (Total),
+    Cierres de Referidos (Total), Re-cierres de Pauta, Re-cierres de
+    Referidos, Total Cierres, % Eficiencia Real, % Eficiencia Bruta, Leads
+    Clientify WhatsApp, Leads Formulario Facebook-CP.
 
-    "Leads Pauta" fue reemplazada por las 3 tarjetas de cierres desglosados;
-    "Total Cierres" ahora usa total_cierres_estricto (suma explícita de las
-    3 tarjetas anteriores), no total_cierres_general ni el total_cierres legado.
-    "% Eficiencia Pauta" se renombró a "% Eficiencia Real" (campo eficiencia_real)."""
+    Las 3 tarjetas de cierres por orden de cierre (2026-07-03c) fueron
+    reemplazadas por 4 tarjetas por canal — "Cierres de Pauta (Total)"
+    (cierres_marketing) y "Cierres de Referidos (Total)" (cierres_referidos)
+    ya suman las 4 columnas de fecha de cierre, no solo la 1ra; "Re-cierres
+    de Pauta"/"Re-cierres de Referidos" son cierres_adicionales_pauta/
+    cierres_adicionales_referido (solo 2da/3ra/4ta columna). "Total Cierres"
+    sigue usando total_cierres_estricto, sin cambios. "% Eficiencia Pauta"
+    se renombró a "% Eficiencia Real" (campo eficiencia_real) en 2026-07-03i.
+    El label de eficiencia_global pasó de "% Eficiencia Global" a
+    "% Eficiencia Bruta" en 2026-09-04 (el campo interno NO se renombró)."""
     from src.analytics.kpis import KPI_DEFINITIONS_TODOS
     keys = [k.key for k in KPI_DEFINITIONS_TODOS]
     assert keys == [
         "creados", "leads_organico_tiktok",
         "calificados", "no_calificados",
-        "cierres_pauta_primer", "cierres_referido_primer", "cierres_adicionales",
+        "cierres_marketing", "cierres_referidos",
+        "cierres_adicionales_pauta", "cierres_adicionales_referido",
         "total_cierres_estricto",
         "eficiencia_real", "eficiencia_global",
+        "leads_clientify_whatsapp", "leads_formulario_facebook_cp",
     ]
 
 
 def test_kpi_todos_no_incluye_lideres_pauta_ni_leads_pauta():
     """Ni 'Líderes Pauta' (nunca existió) ni 'Leads Pauta' (reemplazada) deben
-    aparecer en el layout de 10 tarjetas."""
+    aparecer en el layout de 13 tarjetas."""
     from src.analytics.kpis import KPI_DEFINITIONS_TODOS
     labels = [k.label for k in KPI_DEFINITIONS_TODOS]
     assert "Líderes Pauta" not in labels
     assert "Leads Pauta" not in labels
-    assert len(KPI_DEFINITIONS_TODOS) == 10
+    assert len(KPI_DEFINITIONS_TODOS) == 13
 
 
 def test_kpi_todos_tarjetas_de_cierre_van_consecutivas_antes_del_total():
-    """Pauta(M) -> Referidos(R) -> Adicionales -> Total Cierres, en ese orden y consecutivas."""
+    """Pauta(Total) -> Referidos(Total) -> Re-cierres Pauta -> Re-cierres
+    Referidos -> Total Cierres, en ese orden y consecutivas."""
     from src.analytics.kpis import KPI_DEFINITIONS_TODOS
     keys = [k.key for k in KPI_DEFINITIONS_TODOS]
-    i = keys.index("cierres_pauta_primer")
-    assert keys[i:i + 4] == [
-        "cierres_pauta_primer", "cierres_referido_primer",
-        "cierres_adicionales", "total_cierres_estricto",
+    i = keys.index("cierres_marketing")
+    assert keys[i:i + 5] == [
+        "cierres_marketing", "cierres_referidos",
+        "cierres_adicionales_pauta", "cierres_adicionales_referido",
+        "total_cierres_estricto",
     ]
 
 

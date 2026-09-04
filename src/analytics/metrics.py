@@ -106,7 +106,14 @@ class Metrics:
     total_cierres: int              # = cierres_marketing (Pauta, que ya incluye TikTok/Orgánico/redes-referidos)
     eficiencia_real: float           # (Cierres de Pauta * 100) / Calificados del mes — "% Eficiencia Real"
     eficiencia_bruta: float
-    eficiencia_global: float         # (Cierres de Pauta * 100) / Creados del mes — "% Eficiencia Global"
+    eficiencia_global: float         # (Cierres de Pauta * 100) / Creados del mes — nombre de campo sin
+                                      # cambiar, pero el label visible en la tarjeta es "% Eficiencia Bruta"
+                                      # desde 2026-09-04 (ver KPI_DEFINITIONS_TODOS en kpis.py; OJO, no
+                                      # confundir con el campo `eficiencia_bruta` de acá arriba, que es otro)
+
+    # --- Conteos por valor exacto de "Canal offline" (2026-09-04) ---
+    leads_clientify_whatsapp: int    # Canal offline == "clientify - whatsapp", excluye a César (igual que `creados`)
+    leads_formulario_facebook_cp: int  # Canal offline == "formulario de facebook - cliente potencial", excluye a César
 
     total_cierres_estricto: int     # Suma ESTRICTA cierres_pauta_primer + cierres_referido_primer
                                      # + cierres_adicionales — usado por la tarjeta "Total Cierres"
@@ -463,6 +470,7 @@ def compute_all_metrics(
             calificados=0, no_calificados=0,
             total_cierres=0,
             eficiencia_real=0.0, eficiencia_bruta=0.0, eficiencia_global=0.0,
+            leads_clientify_whatsapp=0, leads_formulario_facebook_cp=0,
             total_cierres_estricto=0,
             total_cierres_general=0, cierres_marketing=0, cierres_referidos=0,
             cierres_organico=0, cierres_tiktok=0, cierres_no_pauta=0,
@@ -490,12 +498,28 @@ def compute_all_metrics(
         year, month = int(first.year), int(first.month)
 
     # --- Clasificación de leads del período ---
-    creados = len(df_period)
-
     mkt_mask = get_mask(df_period, "_is_marketing", is_marketing)
     tiktok_mask = get_mask(df_period, "_is_tiktok", is_tiktok)
     organico_mask = get_mask(df_period, "_is_organico", is_organico)
     cesar_mask = get_mask(df_period, "_is_cesar_augusto", is_cesar_augusto)
+
+    # Regla 2026-09-03: "Creados del mes" excluye a César Augusto — su
+    # volumen (~17.000, comentarios/ruido en redes, no leads comerciales
+    # reales) distorsionaba la tarjeta. Exclusión LOCAL a este campo: no
+    # toca is_marketing/is_qualified_mask/is_asesor_comercial ni
+    # NON_COMMERCIAL_OWNERS (compartidos por otros ~19 archivos, sin
+    # cambios). `leads_organico_tiktok` (más abajo) sigue sumando a César
+    # completo a propósito — esa tarjeta NO cambió.
+    creados = int((~cesar_mask).sum())
+
+    # Conteos por valor exacto de "Canal offline" (2026-09-04), mismo patrón
+    # que `creados`: excluyen a César Augusto por consistencia con esa tarjeta.
+    canal_off_period = df_period.get("Canal offline", pd.Series("", index=df_period.index))
+    canal_off_period = canal_off_period.apply(_safe_str).str.strip().str.lower()
+    leads_clientify_whatsapp = int(((canal_off_period == "clientify - whatsapp") & ~cesar_mask).sum())
+    leads_formulario_facebook_cp = int(
+        ((canal_off_period == "formulario de facebook - cliente potencial") & ~cesar_mask).sum()
+    )
 
     # "Leads generales" de Orgánico/TikTok excluyen a César Augusto: sus leads
     # entran completos vía Suma 1 (ver abajo), sin dividirse entre las
@@ -530,11 +554,27 @@ def compute_all_metrics(
     # pauta=Orgánico cae una sola vez en Suma 2b (TikTok).
     leads_organico_tiktok = leads_organico + leads_tiktok + int(cesar_mask.sum())
 
-    # --- Asignados: solo Asesores Comerciales ---
+    # Excepción a la exclusión de César (regla 2026-09-03b): si tuvo un
+    # cierre real (venta efectiva), SÍ debe entrar a Asignados/Calificados.
+    # Señal: "Cantidad de cierres" >= 1 — misma columna/criterio que usa el
+    # término `mask_cierre` de `is_qualified_mask` (arriba), así que un lead
+    # que pasa este gate SIEMPRE termina calificado por esa misma vía
+    # (garantizado por construcción). Se evalúa acá con la columna cruda en
+    # vez de llamar a `is_qualified_mask` completo porque solo nos interesa
+    # la señal de cierre real, no también la de "Motivo de no cierre".
+    if "Cantidad de cierres" in df_period.columns:
+        tiene_cierre_real_mask = df_period["Cantidad de cierres"].fillna(0) >= 1
+    else:
+        tiene_cierre_real_mask = pd.Series(False, index=df_period.index)
+
+    # --- Asignados: solo Asesores Comerciales, excluyendo a César Augusto ---
+    # salvo que haya tenido un cierre real (ver `tiene_cierre_real_mask`
+    # arriba). Exclusión LOCAL sobre esta máscara: is_asesor_comercial/
+    # NON_COMMERCIAL_OWNERS en settings.py quedan sin tocar.
     if "_is_asesor_comercial" in df_period.columns:
-        asignado_mask = df_period["_is_asesor_comercial"]
+        asignado_mask = df_period["_is_asesor_comercial"] & (~cesar_mask | tiene_cierre_real_mask)
     elif "propietario" in df_period.columns:
-        asignado_mask = df_period["propietario"].apply(is_asesor_comercial)
+        asignado_mask = df_period["propietario"].apply(is_asesor_comercial) & (~cesar_mask | tiene_cierre_real_mask)
     else:
         asignado_mask = pd.Series(False, index=df_period.index)
     df_asignados = df_period[asignado_mask]
@@ -672,6 +712,8 @@ def compute_all_metrics(
         total_cierres=total_cierres,
         eficiencia_real=eficiencia_real, eficiencia_bruta=eficiencia_bruta,
         eficiencia_global=eficiencia_global,
+        leads_clientify_whatsapp=leads_clientify_whatsapp,
+        leads_formulario_facebook_cp=leads_formulario_facebook_cp,
         total_cierres_estricto=total_cierres_estricto,
         total_cierres_general=total_cierres_general,
         cierres_marketing=cierres_marketing, cierres_referidos=cierres_referidos,
