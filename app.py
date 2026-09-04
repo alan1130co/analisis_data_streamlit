@@ -19,8 +19,8 @@ from src.analytics.filters import (
     default_month_index,
     format_month_label,
 )
-
 from src.ui.sections.pauta_vs_referidos import render_pauta_vs_referidos
+from src.ui.sections.pauta_vs_referidos_antiguedad import render_pauta_vs_referidos_antiguedad
 from src.ui.sections.cierres_por_canal import render_cierres_por_canal
 from src.ui.sections.closures_by_campaign import render_closures_by_campaign
 from src.ui.sections.funnel import render_funnel
@@ -186,8 +186,11 @@ def main():
         st.subheader("👤 Análisis por Asesor")
         render_funnel(df_full, selected.year, selected.month)
         st.markdown("---")
-        render_pauta_vs_referidos(df, selected.year, selected.month, team=equipo)
+        periodo_pauta_referidos = render_pauta_vs_referidos(df, selected.year, selected.month, team=equipo)
         st.markdown("---")
+        if periodo_pauta_referidos is not None:
+            render_pauta_vs_referidos_antiguedad(df_full, *periodo_pauta_referidos)
+            st.markdown("---")
         render_cierres_por_canal(df_full, selected.year, selected.month, team=equipo)
         st.markdown("---")
         render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
