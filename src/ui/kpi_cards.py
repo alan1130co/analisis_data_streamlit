@@ -40,17 +40,10 @@ def _delta_html(current, prev, fmt: str) -> str:
         return f'<div class="kpi-delta {css}">{sign}{formatted}</div>'
 
 
-def render_kpi_cards(
-    metrics: Metrics,
-    metrics_prev: Metrics | None = None,
-    team: str = "Todos",
-) -> None:
-    """Renderiza la grilla de tarjetas con los KPIs principales."""
-    data = metrics.to_dict()
-    prev_data = metrics_prev.to_dict() if metrics_prev is not None else {}
+_FILA_1_CANTIDAD = 6  # Gestión Comercial (13 tarjetas): fila 1 = primeras 6, fila 2 = las últimas 7.
 
-    kpis = get_kpi_definitions(team)
 
+def _build_cards_html(kpis, data, prev_data, metrics_prev) -> str:
     cards = []
     for kpi in kpis:
         value = data.get(kpi.key, 0)
@@ -68,11 +61,36 @@ def render_kpi_cards(
             f'{delta}'
             f'</div>'
         )
+    return "".join(cards)
+
+
+def render_kpi_cards(
+    metrics: Metrics,
+    metrics_prev: Metrics | None = None,
+    team: str = "Todos",
+) -> None:
+    """Renderiza la grilla de tarjetas con los KPIs principales, en 2 filas:
+    la primera con las primeras `_FILA_1_CANTIDAD` tarjetas de
+    `get_kpi_definitions(team)`, la segunda con el resto — mismo orden que
+    la lista original, solo se corta en dos `<div class="kpi-grid">`
+    independientes (misma clase CSS reutilizada, sigue siendo responsive
+    igual que antes de partirla en 2 filas)."""
+    data = metrics.to_dict()
+    prev_data = metrics_prev.to_dict() if metrics_prev is not None else {}
+
+    kpis = get_kpi_definitions(team)
+    fila_1 = kpis[:_FILA_1_CANTIDAD]
+    fila_2 = kpis[_FILA_1_CANTIDAD:]
 
     st.markdown(
-        f'<div class="kpi-grid">{"".join(cards)}</div>',
+        f'<div class="kpi-grid">{_build_cards_html(fila_1, data, prev_data, metrics_prev)}</div>',
         unsafe_allow_html=True,
     )
+    if fila_2:
+        st.markdown(
+            f'<div class="kpi-grid">{_build_cards_html(fila_2, data, prev_data, metrics_prev)}</div>',
+            unsafe_allow_html=True,
+        )
 
     with st.expander("Desglose de cierres por etapa"):
         st.caption(
