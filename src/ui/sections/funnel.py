@@ -1,6 +1,7 @@
 """Sección: Embudo Asignados → Calificados → Cierres."""
 from __future__ import annotations
 
+import unicodedata
 from datetime import date
 
 import pandas as pd
@@ -9,10 +10,22 @@ import streamlit as st
 
 from src.analytics.filters import available_months, filter_by_month
 from src.analytics.funnel import funnel_by_advisor
+from src.config.settings import CESAR_AUGUSTO_PREFIX
 from src.ui.period_selector import render_period_selector
 from src.utils.formatters import format_percent_raw
 
 _TRANSPARENT = "rgba(0,0,0,0)"
+
+
+def _is_cesar_asesor(asesor: str) -> bool:
+    """True si el nombre de asesor corresponde a César Augusto (accent-insensitive,
+    mismo criterio que `metrics.is_cesar_augusto`, aplicado acá sobre el nombre ya
+    formateado con `.title()` que arma `funnel_by_advisor`)."""
+    normalized = "".join(
+        c for c in unicodedata.normalize("NFKD", str(asesor).strip().lower())
+        if not unicodedata.combining(c)
+    )
+    return normalized.startswith(CESAR_AUGUSTO_PREFIX)
 
 
 def render_funnel(df_full: pd.DataFrame, default_year: int, default_month: int) -> None:
@@ -53,15 +66,20 @@ def render_funnel(df_full: pd.DataFrame, default_year: int, default_month: int) 
         ("Cierres Totales",  "#16A34A"),
     ]
 
+    # César Augusto queda fuera SOLO de la gráfica de barras (su volumen de
+    # Asignados aplasta visualmente al resto de los asesores) — la tabla de
+    # abajo sigue mostrando su fila sin cambios, usa `data` completo.
+    chart_data = data[~data["Asesor"].apply(_is_cesar_asesor)]
+
     fig = go.Figure()
     for col, color in _SERIES:
-        if col in data.columns:
+        if col in chart_data.columns:
             fig.add_trace(go.Bar(
                 name=col,
-                x=data["Asesor"],
-                y=data[col],
+                x=chart_data["Asesor"],
+                y=chart_data[col],
                 marker_color=color,
-                text=data[col],
+                text=chart_data[col],
                 textposition="outside",
             ))
 

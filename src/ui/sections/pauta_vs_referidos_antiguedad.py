@@ -6,20 +6,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.analytics.breakdowns import (
-    COHORTE_MES_ANTERIOR,
-    COHORTE_MISMO_MES,
     available_periods,
     cierres_whatsapp_facebook_cp_por_mes_origen,
-    pauta_vs_referidos_por_antiguedad,
     pauta_vs_referidos_por_antiguedad_detalle,
 )
 from src.ui.period_selector import render_period_selector
 
 _TRANSPARENT = "rgba(0,0,0,0)"
-_PRIMARY = "#2563EB"
-_SUCCESS = "#16A34A"
-
-_COHORTES = [COHORTE_MISMO_MES, COHORTE_MES_ANTERIOR]
 
 _CANAL_ORDER = ["Clientify - Whatsapp", "Formulario de Facebook - Cliente Potencial"]
 _CANAL_COLORS = {
@@ -27,58 +20,63 @@ _CANAL_COLORS = {
     "Formulario de Facebook - Cliente Potencial": "#7C3AED",
 }
 
+_MESES_ABREV = {
+    1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
+    7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic",
+}
+
+
+def _format_mes_origen(mes_origen: str) -> str:
+    """"2026-08" -> "Ago 2026" — etiqueta legible para las porciones de la torta."""
+    year_str, month_str = mes_origen.split("-")
+    return f"{_MESES_ABREV[int(month_str)]} {year_str}"
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _rgb_to_hex(rgb: tuple[int, int, int]) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*rgb)
+
+
+def _shades(base_hex: str, n: int) -> list[str]:
+    """Genera `n` tonos derivados de `base_hex` (mismo matiz, luminosidad
+    creciente) para diferenciar las porciones de una torta de UN SOLO canal
+    — un pie chart necesita un color por porción, no un color plano. El
+    primer tono es el color base exacto (el ya usado en la gráfica de
+    barras anterior); los siguientes se aclaran progresivamente mezclando
+    con blanco."""
+    if n <= 1:
+        return [base_hex]
+    r, g, b = _hex_to_rgb(base_hex)
+    shades = []
+    for i in range(n):
+        t = (i / (n - 1)) * 0.65
+        shade = tuple(int(c + (255 - c) * t) for c in (r, g, b))
+        shades.append(_rgb_to_hex(shade))
+    return shades
+
 
 def render_pauta_vs_referidos_antiguedad(df_full: pd.DataFrame, year: int, month: int) -> None:
     """Reutiliza el `(year, month)` ya resuelto por el selector propio de la
     sección "📡 Pauta vs Referidos" (`render_pauta_vs_referidos`, que ahora
-    lo devuelve) para la dona, las barras apiladas por antigüedad y la tabla
-    de detalle — esas 3 partes NO tienen selector propio.
+    lo devuelve) para la tabla de detalle de cierres — esa parte NO tiene
+    selector propio.
 
     La gráfica de "cierres por mes de origen" (2026-09-04), al final de esta
     función, SÍ tiene su propio `st.selectbox` de período, independiente del
-    resto — ver comentario junto a `render_period_selector` más abajo."""
+    resto — ver comentario junto a `render_period_selector` más abajo.
+
+    2026-09-08: se eliminó la gráfica de barras apiladas por antigüedad
+    (cohortes "Llegaron y cerraron este mes" / "Llegaron antes y cerraron
+    este mes") y sus 2 métricas — quedaba redundante con la dona "Pauta vs
+    Referidos" (`pauta_vs_referidos.py`, sección aparte, sin cambios) y el
+    usuario pidió simplificar. `pauta_vs_referidos_por_antiguedad` (la
+    función de analytics que la alimentaba) NO se borró — sigue cubierta
+    por tests dedicados en `tests/test_breakdowns.py`."""
     st.subheader("🕓 Pauta vs Referidos según antigüedad del lead")
-
-    data = pauta_vs_referidos_por_antiguedad(df_full, df_full, year, month)
-    pauta_by_cohorte = data[data["Origen"] == "Pauta"].set_index("Cohorte")["Cantidad"]
-    ref_by_cohorte = data[data["Origen"] == "Referidos"].set_index("Cohorte")["Cantidad"]
-
-    pauta_vals = [int(pauta_by_cohorte.get(c, 0)) for c in _COHORTES]
-    ref_vals = [int(ref_by_cohorte.get(c, 0)) for c in _COHORTES]
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        name="Pauta",
-        x=_COHORTES,
-        y=pauta_vals,
-        marker_color=_PRIMARY,
-        text=pauta_vals,
-        textposition="inside",
-    ))
-    fig.add_trace(go.Bar(
-        name="Referidos",
-        x=_COHORTES,
-        y=ref_vals,
-        marker_color=_SUCCESS,
-        text=ref_vals,
-        textposition="inside",
-    ))
-    fig.update_layout(
-        barmode="stack",
-        height=420,
-        margin=dict(l=20, r=20, t=40, b=40),
-        plot_bgcolor=_TRANSPARENT,
-        paper_bgcolor=_TRANSPARENT,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    total_mismo_mes = int(pauta_by_cohorte.get(COHORTE_MISMO_MES, 0)) + int(ref_by_cohorte.get(COHORTE_MISMO_MES, 0))
-    total_mes_anterior = int(pauta_by_cohorte.get(COHORTE_MES_ANTERIOR, 0)) + int(ref_by_cohorte.get(COHORTE_MES_ANTERIOR, 0))
-
-    c1, c2 = st.columns(2)
-    c1.metric(COHORTE_MISMO_MES, f"{total_mismo_mes:,}".replace(",", "."))
-    c2.metric(COHORTE_MES_ANTERIOR, f"{total_mes_anterior:,}".replace(",", "."))
 
     st.markdown("#### Detalle de cierres")
     detalle = pauta_vs_referidos_por_antiguedad_detalle(df_full, df_full, year, month)
@@ -91,15 +89,14 @@ def render_pauta_vs_referidos_antiguedad(df_full: pd.DataFrame, year: int, month
         st.dataframe(display, use_container_width=True, hide_index=True)
 
     st.markdown("#### Cierres de Clientify-Whatsapp y Formulario Facebook-CP por mes de origen")
-    # Selector de período INDEPENDIENTE del resto de la sección (dona,
-    # barras apiladas por antigüedad y tabla de detalle arriba siguen usando
-    # el `year`/`month` que recibe la función). Usa `available_periods`
-    # (basado en fecha de CIERRE), no `available_months` (basado en
-    # "creado") — `cierres_whatsapp_facebook_cp_por_mes_origen` filtra por
-    # mes de CIERRE (mismo criterio que `pauta_vs_referidos`, que alimenta
-    # la dona de arriba con el mismo helper), así que el selector debe
-    # ofrecer los mismos meses en los que existen cierres, no meses en los
-    # que se crearon leads.
+    # Selector de período INDEPENDIENTE del resto de la sección (tabla de
+    # detalle arriba sigue usando el `year`/`month` que recibe la función).
+    # Usa `available_periods` (basado en fecha de CIERRE), no
+    # `available_months` (basado en "creado") — `cierres_whatsapp_facebook_cp_
+    # por_mes_origen` filtra por mes de CIERRE (mismo criterio que
+    # `pauta_vs_referidos`, que alimenta la dona en `pauta_vs_referidos.py`
+    # con el mismo helper), así que el selector debe ofrecer los mismos
+    # meses en los que existen cierres, no meses en los que se crearon leads.
     periods_wf = available_periods(df_full)
     default_year_wf, default_month_wf = periods_wf[0] if periods_wf else (0, 0)
     sel_wf = render_period_selector(
@@ -112,45 +109,47 @@ def render_pauta_vs_referidos_antiguedad(df_full: pd.DataFrame, year: int, month
         return
     year_wf, month_wf = sel_wf
 
+    # Reutiliza la misma función de analytics (ya trae ambos canales en
+    # formato largo, sin cambios) — 2026-09-08b: cada canal se muestra como
+    # torta (una porción por mes de origen), en vez de barras.
     data_wf = cierres_whatsapp_facebook_cp_por_mes_origen(df_full, df_full, year_wf, month_wf)
     if data_wf.empty:
         st.info("No hay cierres de estos 2 canales en este período.")
         return
 
-    meses = sorted(data_wf["Mes de Origen"].unique())
-    pivot = (
-        data_wf.pivot(index="Mes de Origen", columns="Canal", values="Cantidad")
-        .reindex(meses)
-        .fillna(0)
-    )
-
-    fig2 = go.Figure()
     for canal in _CANAL_ORDER:
-        vals = pivot[canal].tolist() if canal in pivot.columns else [0] * len(meses)
-        fig2.add_trace(go.Bar(
-            name=canal,
-            x=meses,
-            y=vals,
-            marker_color=_CANAL_COLORS[canal],
-            text=[int(v) for v in vals],
-            textposition="inside",
+        data_canal = data_wf[data_wf["Canal"] == canal].set_index("Mes de Origen")["Cantidad"]
+        if data_canal.empty:
+            continue
+        # Meses propios de ESTE canal únicamente.
+        meses_canal = sorted(data_canal.index)
+        vals = [int(data_canal.get(m, 0)) for m in meses_canal]
+        labels = [_format_mes_origen(m) for m in meses_canal]
+        text_labels = [f"{label}: {val}" for label, val in zip(labels, vals)]
+
+        st.markdown(f"##### Cierres de {canal} por mes de origen")
+        fig_canal = go.Figure()
+        fig_canal.add_trace(go.Pie(
+            labels=labels,
+            values=vals,
+            text=text_labels,
+            textinfo="text",
+            hovertemplate="%{label}: %{value} cierres (%{percent})<extra></extra>",
+            marker=dict(colors=_shades(_CANAL_COLORS[canal], len(labels))),
         ))
-    fig2.update_layout(
-        barmode="stack",
-        height=420,
-        xaxis_title="Mes de Origen",
-        margin=dict(l=20, r=20, t=40, b=40),
-        plot_bgcolor=_TRANSPARENT,
-        paper_bgcolor=_TRANSPARENT,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+        fig_canal.update_layout(
+            height=380,
+            margin=dict(l=20, r=20, t=30, b=40),
+            plot_bgcolor=_TRANSPARENT,
+            paper_bgcolor=_TRANSPARENT,
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
+        )
+        st.plotly_chart(fig_canal, use_container_width=True)
 
-    por_mes = data_wf.groupby("Mes de Origen")["Cantidad"].sum()
-    total_wf = int(por_mes.sum())
-    mes_lider = por_mes.idxmax()
-    cantidad_lider = int(por_mes.max())
-
-    c3, c4 = st.columns(2)
-    c3.metric("Total de cierres (estos 2 canales)", f"{total_wf:,}".replace(",", "."))
-    c4.metric("Mes de origen con más cierres", f"{mes_lider} ({cantidad_lider})")
+        total_canal = int(data_canal.sum())
+        mes_lider = data_canal.idxmax()
+        cantidad_lider = int(data_canal.max())
+        cc1, cc2 = st.columns(2)
+        cc1.metric(f"Total de cierres — {canal}", f"{total_canal:,}".replace(",", "."))
+        cc2.metric("Mes de origen con más cierres", f"{mes_lider} ({cantidad_lider})")

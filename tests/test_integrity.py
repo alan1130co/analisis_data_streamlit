@@ -325,6 +325,18 @@ def test_april_2026_creados_y_calificados_marketing():
     recalcular en esta sesión porque no hay `.xls` real en `data/raw/`. Si
     este test empieza a correr con un archivo real, recalcular ambos valores
     antes de asumir que un fallo es una regresión.
+
+    ATENCIÓN (2026-09-08, actualizado 2026-09-08c): `metrics.creados == 595`
+    fue calculado con la regla ANTERIOR (todos los leads del mes, excluyendo
+    solo a César). La regla 2026-09-08 restringió 'creados' a Pauta+Orgánico
+    vía `is_marketing`/`is_organico` (excluye Referido puro); la regla
+    2026-09-08c ([[clientify-business-rules]]) sumó ADEMÁS los leads
+    identificables solo por la línea de WhatsApp/Formulario Facebook-CP en
+    "Etiquetas" — necesario porque "Canal offline" viene vacío en ~99% de
+    los leads reales, así que `is_marketing`/`is_organico` por sí solos
+    pierden casi todo. El 595 es casi seguro incorrecto (puede terminar más
+    alto O más bajo que 595, no asumir dirección) — recalcular con un
+    archivo real antes de confiar en él.
     """
     raw_dir = Path("data/raw")
     files = sorted(raw_dir.glob("*.xls*"))
@@ -392,10 +404,20 @@ def test_junio_2026_total_cierres_general_regla_estado_inactivo():
     sin cierre = calificado por defecto). Con la regla estricta actual
     (motivo vacío sin cierre real = NO calificado), `calificados` casi
     seguro bajó bastante — no se pudo recalcular en esta sesión (sin `.xls`
-    real en `data/raw/`). `total_cierres_general`/`cierres_*`/`creados` NO
-    se ven afectados (no dependen de `is_qualified_mask`), solo
+    real en `data/raw/`). `total_cierres_general`/`cierres_*` NO se ven
+    afectados (no dependen de `is_qualified_mask`), solo
     `calificados`/`eficiencia_real`. Recalcular antes de confiar en el 873
     si este test llega a correr con un archivo real.
+
+    ATENCIÓN (2026-09-08, actualizado 2026-09-08c): `creados == 1090` y por lo
+    tanto `eficiencia_global` también quedaron desactualizados por la MISMA
+    razón que el 595 de abril (ver `test_april_2026_creados_y_calificados_
+    marketing` arriba, incluye el detalle completo del fix 2026-09-08c de
+    "Etiquetas"). No asumir que 1090 solo puede bajar — el término de
+    "Etiquetas" agregado en 2026-09-08c puede compensarlo o incluso superarlo,
+    dado que "Canal offline" viene vacío en la gran mayoría de los leads
+    reales. Recalcular ambos antes de confiar en ellos si este test llega a
+    correr con un archivo real.
     """
     raw_dir = Path("data/raw")
     files = sorted(raw_dir.glob("*.xls*"))

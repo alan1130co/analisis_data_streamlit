@@ -111,9 +111,9 @@ class Metrics:
                                       # desde 2026-09-04 (ver KPI_DEFINITIONS_TODOS en kpis.py; OJO, no
                                       # confundir con el campo `eficiencia_bruta` de acá arriba, que es otro)
 
-    # --- Conteos por valor exacto de "Canal offline" (2026-09-04) ---
-    leads_clientify_whatsapp: int    # Canal offline == "clientify - whatsapp", excluye a César (igual que `creados`)
-    leads_formulario_facebook_cp: int  # Canal offline == "formulario de facebook - cliente potencial", excluye a César
+    # --- Conteos por línea etiquetada en "Etiquetas" (2026-09-08, antes por "Canal offline" exacto) ---
+    leads_clientify_whatsapp: int    # "Etiquetas" contiene "305-508-5147", excluye a César (igual que `creados`)
+    leads_formulario_facebook_cp: int  # "Etiquetas" contiene "305-610-0002", excluye a César; NO excluyente con la de arriba
 
     total_cierres_estricto: int     # Suma ESTRICTA cierres_pauta_primer + cierres_referido_primer
                                      # + cierres_adicionales — usado por la tarjeta "Total Cierres"
@@ -503,6 +503,27 @@ def compute_all_metrics(
     organico_mask = get_mask(df_period, "_is_organico", is_organico)
     cesar_mask = get_mask(df_period, "_is_cesar_augusto", is_cesar_augusto)
 
+    # Máscaras por línea etiquetada en "Etiquetas" (2026-09-08, reemplaza el
+    # match exacto anterior contra "Canal offline" — confirmado directamente
+    # en Clientify: la línea "305-508-5147" identifica Clientify Whatsapp y
+    # "305-610-0002" identifica Formulario Facebook-CP). "Etiquetas" no está
+    # en `text_cols` del loader (`excel_loader.py`), así que se normaliza acá
+    # (lower+strip), mismo patrón que el resto del proyecto. Se calculan ANTES
+    # de `creados_mask` (más abajo) porque `creados` (2026-09-08b) reutiliza
+    # estas mismas 2 máscaras — no se recalculan.
+    etiquetas_period = df_period.get("Etiquetas", pd.Series("", index=df_period.index))
+    etiquetas_period = etiquetas_period.apply(_safe_str).str.strip().str.lower()
+    tag_whatsapp_mask = etiquetas_period.str.contains("305-508-5147", regex=False)
+    tag_facebook_cp_mask = etiquetas_period.str.contains("305-610-0002", regex=False)
+
+    # Las 2 tarjetas son INDEPENDIENTES (sin elif/exclusión mutua): un lead
+    # con AMBAS líneas etiquetadas a la vez (129 casos confirmados en el
+    # histórico — contacto real por los 2 canales, no error de datos) cuenta
+    # en las 2 tarjetas simultáneamente. Excluyen a César Augusto, mismo
+    # criterio que `creados`.
+    leads_clientify_whatsapp = int((tag_whatsapp_mask & ~cesar_mask).sum())
+    leads_formulario_facebook_cp = int((tag_facebook_cp_mask & ~cesar_mask).sum())
+
     # Regla 2026-09-03: "Creados del mes" excluye a César Augusto — su
     # volumen (~17.000, comentarios/ruido en redes, no leads comerciales
     # reales) distorsionaba la tarjeta. Exclusión LOCAL a este campo: no
@@ -510,16 +531,30 @@ def compute_all_metrics(
     # NON_COMMERCIAL_OWNERS (compartidos por otros ~19 archivos, sin
     # cambios). `leads_organico_tiktok` (más abajo) sigue sumando a César
     # completo a propósito — esa tarjeta NO cambió.
-    creados = int((~cesar_mask).sum())
-
-    # Conteos por valor exacto de "Canal offline" (2026-09-04), mismo patrón
-    # que `creados`: excluyen a César Augusto por consistencia con esa tarjeta.
-    canal_off_period = df_period.get("Canal offline", pd.Series("", index=df_period.index))
-    canal_off_period = canal_off_period.apply(_safe_str).str.strip().str.lower()
-    leads_clientify_whatsapp = int(((canal_off_period == "clientify - whatsapp") & ~cesar_mask).sum())
-    leads_formulario_facebook_cp = int(
-        ((canal_off_period == "formulario de facebook - cliente potencial") & ~cesar_mask).sum()
-    )
+    #
+    # Regla 2026-09-08: además de excluir a César, "Creados del mes" ahora
+    # solo cuenta leads de Pauta u Orgánico, excluyendo Referido puro.
+    # `mkt_mask` (is_marketing) ya incluye TikTok/Orgánico como subconjunto
+    # (ver is_marketing más arriba: `is_tiktok(row) or is_organico(row)` →
+    # True), así que `mkt_mask | organico_mask` es matemáticamente idéntico
+    # a `mkt_mask` solo — se deja explícito el OR igual para que la
+    # intención de negocio (Pauta U Orgánico) quede clara en el código,
+    # aunque `organico_mask` no aporte leads nuevos al conjunto.
+    #
+    # Regla 2026-09-08c: `is_marketing`/`is_organico`/`is_tiktok` dependen
+    # EXCLUSIVAMENTE de "Canal offline"/"Origen de la pauta" — confirmado con
+    # datos reales de Agosto 2026 que "Canal offline" viene vacío en 99.2%
+    # de los leads (17,603 de 17,746), lo que hacía que `creados` (112)
+    # perdiera casi por completo a los ~634 leads identificables solo por
+    # "Etiquetas" (línea de WhatsApp/Formulario Facebook-CP). Se agrega
+    # `tag_whatsapp_mask | tag_facebook_cp_mask` como término adicional del
+    # OR — fix ACOTADO a este campo, sin tocar `is_marketing()` (usada en
+    # ~17 archivos más: cierres_marketing, eficiencia_*, embudo por asesor,
+    # atribución de gasto en Meta). El `|` de pandas ya deduplica: un lead
+    # con ambas líneas etiquetadas cuenta una sola vez acá, aunque sume en
+    # las 2 tarjetas separadas de arriba.
+    creados_mask = (mkt_mask | organico_mask | tag_whatsapp_mask | tag_facebook_cp_mask) & ~cesar_mask
+    creados = int(creados_mask.sum())
 
     # "Leads generales" de Orgánico/TikTok excluyen a César Augusto: sus leads
     # entran completos vía Suma 1 (ver abajo), sin dividirse entre las

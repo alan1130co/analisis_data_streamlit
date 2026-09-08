@@ -56,16 +56,25 @@ def sample_df():
 
 
 def test_creados(sample_df):
+    """Regla 2026-09-08: 'Creados del mes' solo cuenta Pauta u Orgánico
+    (excluye Referido puro y cualquier lead sin canal identificable). En
+    `sample_df`: fila 0 (Clientify - Facebook) y fila 2 (Clientify -
+    Instagram) son Pauta → cuentan; fila 1 (Canal offline vacío, canal
+    online 'inbox', sin Origen de la pauta) no es Pauta ni Orgánico → no
+    cuenta. creados == 2, no 3."""
     m = compute_all_metrics(sample_df, sample_df)
-    assert m.creados == 3
+    assert m.creados == 2
 
 
 def test_creados_excluye_a_cesar_augusto(sample_df):
     """Regla 2026-09-03: 'Creados del mes' excluye a César Augusto (volumen
-    atípico de comentarios/ruido en redes, no leads comerciales reales) —
-    sample_df (3 leads normales) + 1 lead de César debe seguir dando
-    creados == 3, no 4. 'Leads Orgánicos y TikTok' NO cambió: sigue sumando
-    a César completo (esa tarjeta se confirmó explícitamente sin tocar)."""
+    atípico de comentarios/ruido en redes, no leads comerciales reales).
+    Regla 2026-09-08: además solo cuenta Pauta/Orgánico (ver test_creados) —
+    la base de sample_df ya da creados == 2 (no 3). El lead de César
+    ('Orgánico', que SÍ sería Pauta/Orgánico) queda excluido igual por
+    ~cesar_mask, así que sumarlo no cambia el conteo: sigue en 2.
+    'Leads Orgánicos y TikTok' NO cambió: sigue sumando a César completo
+    (esa tarjeta se confirmó explícitamente sin tocar)."""
     cesar_lead = {
         "creado": datetime(2026, 4, 20), "propietario": "Cesar Augusto Perez Tafur",
         "estado": "en transito", "Motivo de no cierre": None,
@@ -75,35 +84,109 @@ def test_creados_excluye_a_cesar_augusto(sample_df):
     }
     df = pd.concat([sample_df, pd.DataFrame([cesar_lead])], ignore_index=True)
     m = compute_all_metrics(df, df)
-    assert m.creados == 3
+    assert m.creados == 2
     assert m.leads_organico_tiktok == 1
 
 
-def test_leads_clientify_whatsapp_y_formulario_facebook_cp_cuentan_por_canal_offline_exacto():
-    """2026-09-04: 2 tarjetas nuevas que cuentan leads por valor EXACTO de
-    'Canal offline' (mismo patrón que 'Creados del mes': excluyen a César
-    Augusto). Solo debe matchear el valor exacto, no otros canales de Pauta
-    (ej. 'Clientify - Facebook' no debe sumar a ninguna de las 2)."""
+def test_creados_excluye_referido_puro():
+    """Regla 2026-09-08: un lead Referido puro (Canal offline empieza con
+    'referido', sin 'redes') no cuenta para 'Creados del mes', aunque no sea
+    de César y esté perfectamente calificado."""
     df = pd.DataFrame([
-        _lead("Clientify - Whatsapp", "sofia"),
-        _lead("Clientify - Whatsapp", "ana"),
-        _lead("Formulario de Facebook - Cliente Potencial", "carlos"),
-        _lead("Clientify - Facebook", "diana"),  # Pauta, pero no debe contar en ninguna de las 2 tarjetas
+        {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": _ACTIVO,
+         "canal online": "paid social", "Canal offline": "clientify - facebook",
+         "Origen de la pauta": "facebook", "Motivo de no cierre": None,
+         "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 5),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        {"creado": datetime(2026, 4, 2), "propietario": "carlos", "estado": _ACTIVO,
+         "canal online": "inbox-referral", "Canal offline": "referido - amigo",
+         "Origen de la pauta": None, "Motivo de no cierre": "cliente potencial",
+         "Cantidad de cierres": 1.0, "Fecha de cierre": datetime(2026, 4, 6),
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.creados == 1
+
+
+def test_leads_clientify_whatsapp_y_formulario_facebook_cp_cuentan_por_etiquetas():
+    """2026-09-08: reemplaza el match exacto contra 'Canal offline' (regla
+    2026-09-04) por un substring sobre la columna 'Etiquetas' — confirmado
+    directamente en Clientify: la línea '305-508-5147' identifica Clientify
+    Whatsapp y '305-610-0002' identifica Formulario Facebook-CP. 'Etiquetas'
+    es texto libre (lista de tags separados por coma), así que basta con que
+    contenga la línea en cualquier parte, no un valor exacto."""
+    df = pd.DataFrame([
+        _lead("clientify - whatsapp", "sofia", etiquetas="whatsapp, 305-508-5147, vip"),
+        _lead("clientify - whatsapp", "ana", etiquetas="305-508-5147"),
+        _lead("formulario de facebook - cliente potencial", "carlos", etiquetas="fb-cp, 305-610-0002"),
+        # Canal offline de Pauta pero SIN ninguna de las 2 líneas en Etiquetas
+        # — no debe sumar a ninguna tarjeta (la clasificación ya no depende
+        # de Canal offline en absoluto).
+        _lead("clientify - facebook", "diana", etiquetas="otra etiqueta cualquiera"),
+        # Etiquetas vacía/None — no debe sumar a ninguna tarjeta.
+        _lead("clientify - whatsapp", "juan", etiquetas=None),
     ])
     m = compute_all_metrics(df, df)
     assert m.leads_clientify_whatsapp == 2
     assert m.leads_formulario_facebook_cp == 1
 
 
-def test_leads_clientify_whatsapp_y_formulario_facebook_cp_excluyen_a_cesar():
-    """Mismo criterio que 'Creados del mes': un lead de César Augusto con
-    Canal offline == 'Clientify - Whatsapp' no debe sumar a la tarjeta."""
+def test_leads_clientify_whatsapp_y_formulario_facebook_cp_ambas_lineas_a_la_vez():
+    """Caso especial confirmado por el usuario: 129 leads reales tienen AMBAS
+    líneas etiquetadas a la vez (contacto real por los 2 canales, no error de
+    datos). Deben contar en LAS 2 tarjetas simultáneamente — las 2 máscaras
+    son independientes (`.str.contains`), no hay elif/exclusión mutua."""
     df = pd.DataFrame([
-        _lead("Clientify - Whatsapp", "Cesar Augusto Perez Tafur"),
-        _lead("Clientify - Whatsapp", "sofia"),
+        _lead("clientify - whatsapp", "sofia", etiquetas="305-508-5147, 305-610-0002"),
     ])
     m = compute_all_metrics(df, df)
     assert m.leads_clientify_whatsapp == 1
+    assert m.leads_formulario_facebook_cp == 1
+
+
+def test_leads_clientify_whatsapp_y_formulario_facebook_cp_excluyen_a_cesar():
+    """Mismo criterio que 'Creados del mes': un lead de César Augusto con la
+    línea '305-508-5147' en 'Etiquetas' no debe sumar a la tarjeta."""
+    df = pd.DataFrame([
+        _lead("clientify - whatsapp", "Cesar Augusto Perez Tafur", etiquetas="305-508-5147"),
+        _lead("clientify - whatsapp", "sofia", etiquetas="305-508-5147"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.leads_clientify_whatsapp == 1
+
+
+def test_creados_incluye_leads_solo_identificables_por_etiquetas():
+    """Regla 2026-09-08c: `is_marketing()`/`is_organico()` dependen
+    EXCLUSIVAMENTE de 'Canal offline'/'Origen de la pauta' — confirmado con
+    datos reales (Agosto 2026) que 'Canal offline' viene vacío en 99.2% de
+    los leads, así que 'creados' perdía casi todos los leads de Pauta
+    identificables solo por la línea de WhatsApp/Formulario Facebook-CP en
+    'Etiquetas' (634 leads reales en ese período). Un lead con 'Canal
+    offline'/'Origen de la pauta' vacíos pero con esa línea en 'Etiquetas'
+    ahora SÍ cuenta para 'creados', aunque is_marketing()/is_organico() lo
+    descarten (verificado explícitamente acá: ambos dan False)."""
+    df = pd.DataFrame([
+        _lead(None, "sofia", origen=None, etiquetas="305-508-5147"),
+    ])
+    row = df.iloc[0]
+    assert is_marketing(row) is False
+    assert is_organico(row) is False
+
+    m = compute_all_metrics(df, df)
+    assert m.creados == 1
+
+
+def test_creados_no_duplica_lead_con_ambas_lineas_de_etiquetas():
+    """Un lead con AMBAS líneas de Etiquetas (WhatsApp + Formulario
+    Facebook-CP) cuenta 1 SOLA vez en 'creados' — el `|` de pandas ya
+    deduplica — aunque sume en las 2 tarjetas separadas de arriba."""
+    df = pd.DataFrame([
+        _lead(None, "sofia", origen=None, etiquetas="305-508-5147, 305-610-0002"),
+    ])
+    m = compute_all_metrics(df, df)
+    assert m.creados == 1
+    assert m.leads_clientify_whatsapp == 1
+    assert m.leads_formulario_facebook_cp == 1
 
 
 def test_asignados_solo_asesores_comerciales(sample_df):
@@ -459,18 +542,23 @@ def test_is_cesar_augusto():
 # ---------------------------------------------------------------------------
 
 def _lead(canal_offline, propietario, estado="en transito", creado=datetime(2026, 4, 1), origen=None,
-          motivo="cliente potencial"):
+          motivo="cliente potencial", etiquetas=None):
     """`motivo` por defecto viene diligenciado ("cliente potencial") para que
     los tests de clasificación por canal (Pauta/Orgánico/TikTok/César) no se
     vean afectados por la regla de "motivo diligenciado" de
     `leads_organico`/`leads_tiktok` (ver `has_motivo_diligenciado_mask`) a
-    menos que la prueba pase `motivo=None` explícitamente para ese caso."""
+    menos que la prueba pase `motivo=None` explícitamente para ese caso.
+
+    `etiquetas`: valor crudo de la columna "Etiquetas" (2026-09-08, usada por
+    leads_clientify_whatsapp/leads_formulario_facebook_cp) — None por
+    defecto para no afectar tests que no la necesitan."""
     return {
         "creado": creado, "propietario": propietario, "estado": estado,
         "canal online": None, "Canal offline": canal_offline, "Origen de la pauta": origen,
         "Motivo de no cierre": motivo, "Cantidad de cierres": None,
         "Fecha de cierre": pd.NaT, "Fecha de segundo cierre": pd.NaT,
         "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT,
+        "Etiquetas": etiquetas,
     }
 
 
@@ -1012,7 +1100,13 @@ def test_eficiencia_real_usa_calificados_del_mes_no_calificados_pauta():
 
 def test_eficiencia_global_usa_creados_no_calificados():
     """2026-07-03i: % Eficiencia Global = (Cierres de Pauta * 100) / Leads
-    CREADOS del mes — ya no total de cierres/calificados."""
+    CREADOS del mes — ya no total de cierres/calificados.
+
+    2026-09-08: 'creados' ahora excluye Referido puro (ver test_creados),
+    así que se agrega una 4ta fila Pauta sin calificar para que 'creados'
+    siga siendo distinto de 'calificados' en este fixture (si no, ambos
+    quedarían en 2 por coincidencia y el test dejaría de probar la
+    distinción creados-vs-calificados que es su propósito original)."""
     df = pd.DataFrame([
         # Pauta, calificada, con cierre válido
         {"creado": datetime(2026, 4, 1), "propietario": "sofia", "estado": _ACTIVO,
@@ -1026,10 +1120,18 @@ def test_eficiencia_global_usa_creados_no_calificados():
          "Origen de la pauta": "instagram", "Motivo de no cierre": "no se logró contactar",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
-        # Referido, calificada (motivo QUALIFIED diligenciado), sin cierre
+        # Referido, calificada (motivo QUALIFIED diligenciado), sin cierre —
+        # ya NO cuenta para 'creados' (Referido puro), sí para 'calificados'.
         {"creado": datetime(2026, 4, 3), "propietario": "carlos", "estado": "en transito",
          "canal online": "inbox-referral", "Canal offline": "referido - amigo",
          "Origen de la pauta": None, "Motivo de no cierre": "cliente potencial",
+         "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
+         "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
+        # Pauta, NO calificada, sin cierre — 2do lead Pauta sin calificar,
+        # para que creados (3) siga siendo distinto de calificados (2).
+        {"creado": datetime(2026, 4, 4), "propietario": "diego", "estado": "en transito",
+         "canal online": "paid social", "Canal offline": "clientify - whatsapp",
+         "Origen de la pauta": None, "Motivo de no cierre": "no se logró contactar",
          "Cantidad de cierres": None, "Fecha de cierre": pd.NaT,
          "Fecha de segundo cierre": pd.NaT, "Fecha de tercer cierre": pd.NaT, "Fecha de 4to cierre": pd.NaT},
     ])

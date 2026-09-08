@@ -1,16 +1,19 @@
-"""Test UI para el selector de período NUEVO e independiente de la gráfica
+"""Test UI para el selector de período NUEVO e independiente de las gráficas
 "Cierres ... por mes de origen" (src/ui/sections/pauta_vs_referidos_antiguedad.py,
-2026-09-04).
+2026-09-04; separadas en 2 gráficas por canal el 2026-09-08; convertidas de
+barras a torta (pie) el 2026-09-08b).
 
 Usa `streamlit.testing.v1.AppTest` (mismo harness que
 `tests/test_ad_spend_sections_ui.py`) porque `st.selectbox` necesita un
 ScriptRunContext real. Compone `render_pauta_vs_referidos` (la dona, con su
-propio selector) + `render_pauta_vs_referidos_antiguedad` (barras por
-antigüedad + la gráfica nueva de mes de origen) en la misma app, igual que
-hace `app.py`, para poder verificar que mover el selector NUEVO no afecta ni
-la dona ni las barras de antigüedad de arriba — solo la gráfica de mes de
-origen.
-"""
+propio selector) + `render_pauta_vs_referidos_antiguedad` (tabla de detalle +
+las 2 gráficas de mes de origen, una por canal) en la misma app, igual que
+hace `app.py`, para poder verificar que mover el selector NUEVO no afecta la
+dona de arriba — solo las gráficas de mes de origen.
+
+2026-09-08: la gráfica de barras apiladas por antigüedad (cohortes) fue
+eliminada de la sección (CAMBIO 3), así que ya no hay un chart_index fijo
+para ella acá."""
 import json
 
 from streamlit.testing.v1 import AppTest
@@ -77,34 +80,44 @@ def test_selector_nuevo_es_independiente_y_default_es_el_mes_mas_reciente():
     assert set(wf_sb.options) == {"Agosto 2026", "Julio 2026"}
 
 
-def test_mover_selector_nuevo_no_afecta_la_dona_ni_las_barras_de_antiguedad():
+def test_mover_selector_nuevo_no_afecta_la_dona():
     at = _build_app()
     at.run()
 
     dona_antes = _plotly_traces(at, 0)
-    barras_antiguedad_antes = _plotly_traces(at, 1)
-    mes_origen_antes = _plotly_traces(at, 2)
 
-    # La gráfica de mes de origen en Agosto: 2 meses de origen (2026-06, 2026-07).
-    xs_antes = sorted(set(x for tr in mes_origen_antes for x in tr.get("x", [])))
-    assert xs_antes == ["2026-06", "2026-07"]
+    # Agosto: dona (0) + torta Clientify-Whatsapp (1) + torta Formulario
+    # Facebook-CP (2) — cada canal tiene 1 cierre en Agosto, con mes de
+    # origen distinto. Cada canal es un go.Pie (una porción por mes).
+    assert len(at.get("plotly_chart")) == 3
+    whatsapp_antes = _plotly_traces(at, 1)
+    facebook_cp_antes = _plotly_traces(at, 2)
+    assert whatsapp_antes[0]["type"] == "pie"
+    assert facebook_cp_antes[0]["type"] == "pie"
+
+    labels_whatsapp_antes = sorted(set(l for tr in whatsapp_antes for l in tr.get("labels", [])))
+    labels_facebook_cp_antes = sorted(set(l for tr in facebook_cp_antes for l in tr.get("labels", [])))
+    assert labels_whatsapp_antes == ["Jun 2026"]
+    assert labels_facebook_cp_antes == ["Jul 2026"]
+
+    # Etiqueta de la porción = "<mes>: <cantidad>".
+    assert whatsapp_antes[0]["text"] == ["Jun 2026: 1"]
+    assert facebook_cp_antes[0]["text"] == ["Jul 2026: 1"]
 
     # Muevo SOLO el selector nuevo (índice 1) a Julio 2026.
     at.selectbox[1].select("Julio 2026").run()
 
-    # El selector de arriba no cambió.
+    # El selector de arriba y la dona (anclada a él) no cambiaron.
     assert at.selectbox[0].value == "Agosto 2026"
-
-    # La dona y las barras de antigüedad (ancladas al selector de ARRIBA) no cambiaron.
     assert _plotly_traces(at, 0) == dona_antes
-    assert _plotly_traces(at, 1) == barras_antiguedad_antes
 
-    # Solo la gráfica de mes de origen cambió: ahora Julio 2026 (mes de
-    # origen 2026-07 únicamente, el lead que cerró en julio).
-    mes_origen_despues = _plotly_traces(at, 2)
-    assert mes_origen_despues != mes_origen_antes
-    xs_despues = sorted(set(x for tr in mes_origen_despues for x in tr.get("x", [])))
-    assert xs_despues == ["2026-07"]
+    # En Julio solo hay 1 cierre de Clientify-Whatsapp (mes de origen
+    # 2026-07); Formulario Facebook-CP no tiene cierres en julio, así que
+    # esa torta ni se dibuja (queda dona + 1 sola torta de canal).
+    assert len(at.get("plotly_chart")) == 2
+    whatsapp_despues = _plotly_traces(at, 1)
+    labels_whatsapp_despues = sorted(set(l for tr in whatsapp_despues for l in tr.get("labels", [])))
+    assert labels_whatsapp_despues == ["Jul 2026"]
 
-    total_despues = sum(sum(tr.get("y", [])) for tr in mes_origen_despues)
-    assert total_despues == 1
+    total_whatsapp_despues = sum(sum(tr.get("values", [])) for tr in whatsapp_despues)
+    assert total_whatsapp_despues == 1

@@ -72,7 +72,11 @@ KPI_DEFINITIONS_REFERIDOS: list[KPIDefinition] = [
 # campo con el label "% Eficiencia Bruta" de acá abajo, que apunta a
 # `eficiencia_global`. Decisión explícita del usuario pese al choque de nombre.
 KPI_DEFINITIONS_TODOS: list[KPIDefinition] = [
-    KPIDefinition("creados",              "Creados del mes",           "📋", "#0F172A", "int"),
+    # 2026-09-08c: label renombrado de "Creados del mes" a "Leads de Pauta y
+    # Orgánico" — refleja mejor lo que el campo `creados` mide desde
+    # 2026-09-08 (Pauta+Orgánico, excluye Referido puro y César); el nombre
+    # interno del campo (`Metrics.creados`) NO se tocó, solo el texto visible.
+    KPIDefinition("creados",              "Leads de Pauta y Orgánico",  "📋", "#0F172A", "int"),
     KPIDefinition("leads_organico_tiktok", "Leads Orgánicos y TikTok", "🌱", "#059669", "int"),
     KPIDefinition("calificados",          "Calificados",                "✅", "#2563EB", "int"),
     KPIDefinition("no_calificados",       "No calificados",             "❌", "#DC2626", "int"),
