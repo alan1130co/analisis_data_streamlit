@@ -6,6 +6,7 @@ from src.analytics.ad_spend import (
     _clean_importe,
     anios_disponibles,
     combine_ad_spend_sources,
+    compact_month_xaxis_range,
     filter_by_anio_mes,
     monthly_ad_spend,
     monthly_ad_spend_with_period,
@@ -195,3 +196,30 @@ def test_filter_by_anio_mes_anio_y_mes_especificos():
 
 def test_filter_by_anio_mes_combinacion_sin_datos_devuelve_vacio():
     assert filter_by_anio_mes(_LABELS_2_ANIOS, 2025, "Septiembre") == []
+
+
+# ---------------------------------------------------------------------------
+# compact_month_xaxis_range — eje X compacto (una sola barra) en
+# ad_spend_roas.py / ad_spend_total_roas.py cuando Año+Mes son específicos
+# ---------------------------------------------------------------------------
+
+def test_compact_month_xaxis_range_anio_y_mes_especificos():
+    assert compact_month_xaxis_range(_LABELS_2_ANIOS, 2026, "Septiembre") == (3 - 0.5, 3 + 0.5)
+
+
+def test_compact_month_xaxis_range_anio_todos_devuelve_none():
+    assert compact_month_xaxis_range(_LABELS_2_ANIOS, TODOS, "Marzo") is None
+
+
+def test_compact_month_xaxis_range_mes_todos_devuelve_none():
+    assert compact_month_xaxis_range(_LABELS_2_ANIOS, 2025, TODOS) is None
+
+
+def test_compact_month_xaxis_range_ambos_todos_devuelve_none():
+    assert compact_month_xaxis_range(_LABELS_2_ANIOS, TODOS, TODOS) is None
+
+
+def test_compact_month_xaxis_range_etiqueta_no_encontrada_devuelve_none():
+    """Combinación Año+Mes específicos pero sin datos en categoryarray
+    (p.ej. filtro sin coincidencias) — no hay índice que devolver."""
+    assert compact_month_xaxis_range(_LABELS_2_ANIOS, 2025, "Septiembre") is None

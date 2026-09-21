@@ -14,6 +14,7 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
+    compact_month_xaxis_range,
     filter_by_anio_mes,
     monthly_ad_spend_with_period,
 )
@@ -47,6 +48,11 @@ def render_ad_spend_total_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
     meses que la línea sigue trayendo (Plotly solo respeta el orden de
     `categoryarray` para las categorías listadas ahí; el resto cae al
     final, ordenado alfabéticamente).
+
+    Cambio 2026-09-21: cuando Año Y Mes son ambos específicos, se aplica un
+    "zoom" al eje (`xaxis.range`, ver `compact_month_xaxis_range`) para que
+    la vista quede compacta en esa única barra, sin recortar el
+    `categoryarray` (mismo mecanismo que `ad_spend_roas.py`).
     """
     st.markdown(f"### {_TITLE}")
 
@@ -120,7 +126,12 @@ def render_ad_spend_total_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
         yaxis="y2",
     ))
 
-    fig.update_xaxes(type="category", categoryorder="array", categoryarray=df_comb_full["Mes_Año"].tolist())
+    categoryarray = df_comb_full["Mes_Año"].tolist()
+    xaxis_kwargs = dict(type="category", categoryorder="array", categoryarray=categoryarray)
+    xaxis_range = compact_month_xaxis_range(categoryarray, anio_sel, mes_sel)
+    if xaxis_range is not None:
+        xaxis_kwargs["range"] = xaxis_range
+    fig.update_xaxes(**xaxis_kwargs)
 
     max_y = max(df_barras["Gasto_Total"].max(), df_barras["Ingreso_CuotaInicial"].max())
     ymax = max_y * 1.25 if max_y > 0 else 1

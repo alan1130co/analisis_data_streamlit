@@ -36,6 +36,12 @@ def _plotly_x_values(app_test: AppTest, trace_index: int = 0) -> list[str]:
     return list(_plotly_traces(app_test)[trace_index]["x"])
 
 
+def _plotly_xaxis_range(app_test: AppTest) -> list[float] | None:
+    chart = app_test.get("plotly_chart")[0]
+    spec = json.loads(chart.proto.spec)
+    return spec["layout"]["xaxis"].get("range")
+
+
 def _plotly_x_values_all_traces(app_test: AppTest) -> list[str]:
     """Concatena "x" de TODOS los traces — necesario para `render_ad_spend`,
     que usa `color="Mes_Año"` en `px.bar` y por lo tanto arma un trace
@@ -177,6 +183,105 @@ def test_render_ad_spend_roas_selector_anio_mes_4_combinaciones_con_linea_roas_c
     assert linea_roas_x() == todos_los_meses
 
 
+def test_render_ad_spend_roas_eje_x_compacto_solo_cuando_anio_y_mes_son_especificos():
+    """Cambio 2026-09-21: el `categoryarray` sigue completo siempre (para no
+    desordenar la línea de ROAS, ver test de arriba), pero cuando Año Y Mes
+    son ambos específicos se aplica un "zoom" (`xaxis.range`) para que la
+    vista quede compacta en esa única barra. Con Año=Todos o Mes=Todos no se
+    aplica ningún rango — eje completo, comportamiento actual."""
+    def app():
+        import streamlit as st
+        import pandas as pd
+        from src.ui.sections.ad_spend_roas import render_ad_spend_roas
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+            {"Fecha": "01/03/2026", "Divisa": "USD", "Importe": "300"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"creado": pd.Timestamp("2025-03-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "300"},
+            {"creado": pd.Timestamp("2025-04-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "400"},
+            {"creado": pd.Timestamp("2026-03-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2026-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "500"},
+        ])
+        render_ad_spend_roas(gasto_raw, df_clientify)
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    # 1. Año=Todos, Mes=Todos -> sin rango (eje completo).
+    assert _plotly_xaxis_range(at) is None
+
+    # 2. Año=2025, Mes=Todos -> sin rango (solo Año no activa el zoom).
+    at.selectbox[0].select("2025").run()
+    assert _plotly_xaxis_range(at) is None
+
+    # 3. Año=Todos, Mes=Marzo -> sin rango (solo Mes no activa el zoom).
+    at.selectbox[0].select(TODOS).run()
+    at.selectbox[1].select("Marzo").run()
+    assert _plotly_xaxis_range(at) is None
+
+    # 4. Año=2026 + Mes=Marzo -> rango de zoom sobre "Marzo 2026" (índice 2
+    # dentro del categoryarray completo ["Marzo 2025", "Abril 2025", "Marzo 2026"]).
+    at.selectbox[0].select("2026").run()
+    assert _plotly_xaxis_range(at) == [1.5, 2.5]
+
+
+def test_render_ad_spend_total_roas_eje_x_compacto_solo_cuando_anio_y_mes_son_especificos():
+    def app():
+        import streamlit as st
+        import pandas as pd
+        from src.ui.sections.ad_spend_total_roas import render_ad_spend_total_roas
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"creado": pd.Timestamp("2025-03-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "300"},
+            {"creado": pd.Timestamp("2025-04-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "400"},
+        ])
+        render_ad_spend_total_roas(gasto_raw, df_clientify)
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    assert _plotly_xaxis_range(at) is None
+
+    at.selectbox[1].select("Marzo").run()
+    assert _plotly_xaxis_range(at) is None  # solo Mes -> sin rango
+
+    at.selectbox[0].select("2025").run()
+    assert _plotly_xaxis_range(at) == [-0.5, 0.5]  # "Marzo 2025" es índice 0
+
+
 def test_render_ad_spend_vs_closures_selector_anio_mes_default_y_filtro_puntual():
     def app():
         import streamlit as st
@@ -316,3 +421,45 @@ def test_render_ad_spend_total_roas_selector_anio_mes_default_y_linea_roas_compl
     assert list(traces[0]["x"]) == ["Marzo 2025"]
     # Línea de ROAS: SIGUE trayendo ambos meses.
     assert list(traces[2]["x"]) == ["Marzo 2025", "Abril 2025"]
+
+
+def test_render_ad_spend_vs_process_value_selector_anio_mes_default_y_filtro_puntual():
+    def app():
+        import streamlit as st
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_process_value import render_ad_spend_vs_process_value
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2026", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"creado": pd.Timestamp("2026-03-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2026-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": "5000"},
+            {"creado": pd.Timestamp("2026-04-01"), "estado": "activo",
+             "Canal offline": "referido puro", "Origen de la pauta": None,
+             "canal online": None,
+             "Fecha de cierre": pd.Timestamp("2026-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": "9000"},  # Referido puro: NO debe sumar acá.
+        ])
+        render_ad_spend_vs_process_value(gasto_raw, df_clientify)
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    assert at.selectbox[0].options == [TODOS, "2026"]
+    assert at.selectbox[0].value == TODOS
+    assert at.selectbox[1].value == TODOS
+
+    traces = _plotly_traces(at)
+    assert list(traces[0]["x"]) == ["Marzo 2026", "Abril 2026"]
+
+    at.selectbox[1].select("Marzo").run()
+    traces = _plotly_traces(at)
+    assert list(traces[0]["x"]) == ["Marzo 2026"]

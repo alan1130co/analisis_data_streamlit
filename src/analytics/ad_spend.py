@@ -179,6 +179,33 @@ def anios_disponibles(labels: list[str]) -> list[int]:
     return sorted({parse_mes_anio(label)[0] for label in labels})
 
 
+def compact_month_xaxis_range(
+    categoryarray: list[str], anio: int | str, mes: str
+) -> tuple[float, float] | None:
+    """Rango `[idx-0.5, idx+0.5]` para "hacer zoom" en un eje X categórico
+    completo (`categoryarray`, sin recortar) a la única categoría del mes
+    elegido, cuando Año y Mes son ambos específicos (ninguno en `TODOS`).
+
+    Usado por `ad_spend_roas.py`/`ad_spend_total_roas.py`, donde el
+    `categoryarray` debe seguir listando TODOS los meses siempre (para que
+    la línea de ROAS no pierda su orden cronológico — ver esos módulos),
+    pero las barras visibles sí deben quedar compactas (una sola barra, sin
+    espacio vacío reservado para el resto de los meses) cuando el usuario
+    filtra a un mes puntual.
+
+    Devuelve `None` si el filtro no es de un único mes (Año=`TODOS` o
+    Mes=`TODOS`) o si esa etiqueta no está en `categoryarray` — en ambos
+    casos se debe mostrar el eje completo, comportamiento actual sin cambios.
+    """
+    if anio == TODOS or mes == TODOS:
+        return None
+    label = f"{mes} {anio}"
+    if label not in categoryarray:
+        return None
+    idx = categoryarray.index(label)
+    return (idx - 0.5, idx + 0.5)
+
+
 def filter_by_anio_mes(labels: list[str], anio: int | str, mes: str) -> list[str]:
     """Filtra `labels` ("Mes Año") por año/mes elegidos en los 2 selectores
     independientes. `anio`: `TODOS` o un año puntual (int). `mes`: `TODOS` o

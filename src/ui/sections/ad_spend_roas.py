@@ -22,6 +22,7 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
+    compact_month_xaxis_range,
     filter_by_anio_mes,
     monthly_ad_spend_with_period,
 )
@@ -61,6 +62,13 @@ def render_ad_spend_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) ->
     descuadre: la(s) barra(s) de la combinación elegida aparecen solas, en
     su posición cronológica correcta, con la línea de ROAS de fondo en todo
     el rango.
+
+    Cambio 2026-09-21: cuando Año Y Mes son ambos específicos (un único mes
+    puntual), se aplica un "zoom" al eje (`xaxis.range`, ver
+    `compact_month_xaxis_range`) para que la vista quede compacta en esa
+    única barra — el `categoryarray` en sí NO se recorta (sigue completo,
+    mismo orden de siempre), solo se ajusta la ventana visible. Si Año o Mes
+    quedan en "Todos", no se aplica rango — eje completo, sin cambios.
     """
     st.markdown(f"### {_TITLE}")
 
@@ -138,7 +146,12 @@ def render_ad_spend_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) ->
         yaxis="y2",
     ))
 
-    fig.update_xaxes(type="category", categoryorder="array", categoryarray=df_comb_full["Mes_Año"].tolist())
+    categoryarray = df_comb_full["Mes_Año"].tolist()
+    xaxis_kwargs = dict(type="category", categoryorder="array", categoryarray=categoryarray)
+    xaxis_range = compact_month_xaxis_range(categoryarray, anio_sel, mes_sel)
+    if xaxis_range is not None:
+        xaxis_kwargs["range"] = xaxis_range
+    fig.update_xaxes(**xaxis_kwargs)
 
     max_y = max(df_barras["Importe"].max(), df_barras["Ingreso_CuotaInicial"].max())
     ymax = max_y * 1.25 if max_y > 0 else 1
