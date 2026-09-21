@@ -85,7 +85,7 @@ def render_funnel(df_full: pd.DataFrame, default_year: int, default_month: int) 
 
     fig.update_layout(
         barmode="group",
-        height=420,
+        height=380,
         xaxis_tickangle=-30,
         margin=dict(l=0, r=20, t=40, b=60),
         plot_bgcolor=_TRANSPARENT,

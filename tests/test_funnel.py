@@ -9,7 +9,7 @@ from src.analytics.funnel import funnel_by_advisor
 _EXPECTED_COLUMNS = {
     "Asesor", "Asignados", "Calificados", "Cierres Pauta",
     "Cierres Totales", "% Eficiencia Real", "% Efic. Bruta",
-    "Valor Pauta", "Valor Total del Proceso",
+    "Valor total procesos vendidos ingresaron por pauta", "Valor total procesos vendidos totales",
 }
 
 
@@ -496,8 +496,8 @@ def test_funnel_valor_total_del_proceso_formato_europeo_miles_decimales():
     }])
     result = funnel_by_advisor(df, df, 2026, 4)
     sofia = result[result["Asesor"] == "Sofia"].iloc[0]
-    assert sofia["Valor Total del Proceso"] == pytest.approx(1500.00)
-    assert sofia["Valor Pauta"] == pytest.approx(1500.00)  # facebook → Pauta
+    assert sofia["Valor total procesos vendidos totales"] == pytest.approx(1500.00)
+    assert sofia["Valor total procesos vendidos ingresaron por pauta"] == pytest.approx(1500.00)  # facebook → Pauta
 
 
 def test_funnel_valor_total_del_proceso_suma_1er_y_2do_cierre():
@@ -522,7 +522,7 @@ def test_funnel_valor_total_del_proceso_suma_1er_y_2do_cierre():
     sofia = result[result["Asesor"] == "Sofia"].iloc[0]
     # 1000 (1er cierre) + 2000 (2do cierre) = 3000. Si se reutilizara el
     # valor del 1er cierre para el 2do, daría 2000 (1000+1000) en vez de 3000.
-    assert sofia["Valor Total del Proceso"] == pytest.approx(3000.0)
+    assert sofia["Valor total procesos vendidos totales"] == pytest.approx(3000.0)
 
 
 def test_funnel_valor_pauta_es_subconjunto_de_valor_total():
@@ -551,9 +551,9 @@ def test_funnel_valor_pauta_es_subconjunto_de_valor_total():
     ])
     result = funnel_by_advisor(df, df, 2026, 4)
     carla = result[result["Asesor"] == "Carla"].iloc[0]
-    assert carla["Valor Pauta"] == pytest.approx(1000.0)
-    assert carla["Valor Total del Proceso"] == pytest.approx(1500.0)
-    assert carla["Valor Pauta"] <= carla["Valor Total del Proceso"]
+    assert carla["Valor total procesos vendidos ingresaron por pauta"] == pytest.approx(1000.0)
+    assert carla["Valor total procesos vendidos totales"] == pytest.approx(1500.0)
+    assert carla["Valor total procesos vendidos ingresaron por pauta"] <= carla["Valor total procesos vendidos totales"]
 
 
 def test_funnel_valor_total_del_proceso_respeta_el_mes_filtrado():
@@ -582,4 +582,4 @@ def test_funnel_valor_total_del_proceso_respeta_el_mes_filtrado():
     ])
     result = funnel_by_advisor(df, df, 2026, 4)
     sofia = result[result["Asesor"] == "Sofia"].iloc[0]
-    assert sofia["Valor Total del Proceso"] == pytest.approx(700.0)
+    assert sofia["Valor total procesos vendidos totales"] == pytest.approx(700.0)

@@ -40,8 +40,8 @@ _COLUMNS = [
     "% Efic. Bruta",
     "Cierres Pauta",
     "Cierres Totales",
-    "Valor Pauta",
-    "Valor Total del Proceso",
+    "Valor total procesos vendidos ingresaron por pauta",
+    "Valor total procesos vendidos totales",
 ]
 
 # Asesores "de planta" — únicos (junto con César Augusto) para los que la
@@ -182,10 +182,12 @@ def funnel_by_advisor(
         clasifican como Pauta (`is_marketing`, misma regla usada en toda la app).
       - Cierres Totales: todos los cierres válidos del mes (Pauta + Referidos +
         Adicionales), suma de las 4 fechas de cierre.
-      - Valor Pauta: suma del valor de los cierres de Pauta del mes (mismo
-        universo que "Cierres Pauta"), vía `_sum_value_in_month`.
-      - Valor Total del Proceso: suma del valor de TODOS los cierres válidos
-        del mes (mismo universo que "Cierres Totales"), sin filtro de canal.
+      - Valor total procesos vendidos ingresaron por pauta: suma del valor de
+        los cierres de Pauta del mes (mismo universo que "Cierres Pauta"),
+        vía `_sum_value_in_month`.
+      - Valor total procesos vendidos totales: suma del valor de TODOS los
+        cierres válidos del mes (mismo universo que "Cierres Totales"), sin
+        filtro de canal.
 
     Orden de filas (regla 2026-09-04, invierte el orden de los grupos 1 y 2
     de la versión anterior — el criterio interno de cada grupo no cambió):
@@ -240,8 +242,8 @@ def funnel_by_advisor(
             "% Efic. Bruta": efic_global,
             "Cierres Pauta": cierres_pauta,
             "Cierres Totales": cierres_totales,
-            "Valor Pauta": valor_pauta,
-            "Valor Total del Proceso": valor_total,
+            "Valor total procesos vendidos ingresaron por pauta": valor_pauta,
+            "Valor total procesos vendidos totales": valor_total,
             "_sort_group": sort_group,
             # Planta/César: Asignados es real, ordena por % Efic. Bruta.
             # "Todos los demás": % Efic. Bruta siempre es 0.0 (Asignados=0
@@ -270,8 +272,8 @@ def funnel_by_advisor(
                     "% Efic. Bruta": 0.0,
                     "Cierres Pauta": cierres_pauta_no_owner,
                     "Cierres Totales": cierres_totales_no_owner,
-                    "Valor Pauta": valor_pauta_no_owner,
-                    "Valor Total del Proceso": valor_total_no_owner,
+                    "Valor total procesos vendidos ingresaron por pauta": valor_pauta_no_owner,
+                    "Valor total procesos vendidos totales": valor_total_no_owner,
                     # "Sin asesor" no es planta ni César → va en el grupo "todos
                     # los demás" (1), ordenada por Cierres Totales como el resto.
                     "_sort_group": 1,
