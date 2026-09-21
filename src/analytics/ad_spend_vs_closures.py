@@ -10,7 +10,7 @@ import pandas as pd
 
 from src.analytics.ad_spend import MESES_ES, _clean_importe
 from src.analytics.closures_by_channel_over_time import CANAL_OFFLINE_COL, redes_channel_mask
-from src.analytics.metrics import CLOSE_DATE_COLS, valid_closure_estado_mask
+from src.analytics.metrics import CLOSE_DATE_COLS, get_mask, is_marketing, valid_closure_estado_mask
 from src.config.settings import (
     HONORARIOS_EQUIPO_DESDE_ANIO,
     HONORARIOS_EQUIPO_DESDE_MES,
@@ -69,6 +69,8 @@ _REVENUE_PLOT_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Concepto", "Valor"]
 _CUOTA_INICIAL_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Ingreso_CuotaInicial"]
 _ROAS_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Importe", "Ingreso_CuotaInicial", "ROAS"]
 _TOTAL_ROAS_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Gasto_Total", "Ingreso_CuotaInicial", "ROAS"]
+_PROCESS_VALUE_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Valor_Proceso_Pauta"]
+_PAUTA_VS_PROCESS_VALUE_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Importe", "Valor_Proceso_Pauta"]
 
 
 def closures_from_redes_monthly(df: pd.DataFrame, channels: set[str] | None = None) -> pd.DataFrame:
@@ -676,3 +678,111 @@ def combine_ad_spend_total_revenue_and_roas(
         axis=1,
     )
     return combined[_TOTAL_ROAS_COLUMNS].reset_index(drop=True)
+
+
+def calculate_pauta_process_value_chart(df: pd.DataFrame) -> pd.DataFrame:
+    """Valor total de los procesos vendidos (suma de "Valor total del
+    proceso" por cada una de las 4 etapas de cierre, ver `_STAGE_VALUE_COLS`
+    / `_clean_importe` — mismo criterio que `_sum_value_in_month` de
+    `funnel.py`, pero agregado por mes en vez de por asesor) de cierres
+    válidos (estado != "inactivo") clasificados como Pauta vía
+    `metrics.is_marketing` — la MISMA regla que ya usan "Cierres Pauta" y
+    "Valor total procesos vendidos ingresaron por pauta" en `funnel.py`,
+    para que esta gráfica y la tabla del Embudo nunca desacuerden sobre qué
+    cuenta como "Pauta".
+
+    A diferencia de `calculate_redes_revenue_chart` (que usa
+    `_redes_isolated_channel_mask`, basada en `redes_channel_mask` +
+    "canal online"=="paid social"), esta función usa estrictamente
+    `is_marketing` (mismo campo "Canal offline"/"Origen de la pauta"/"canal
+    online" que el resto de la app, ver `metrics.is_marketing`). Solo el
+    "Referido puro" (Canal offline que empieza con "referido" y NO menciona
+    "redes") queda excluido de esta suma — "Referido cliente activo -
+    Redes" SIGUE contando como Pauta acá, igual que en el resto de la app
+    (regla 2026-07-03e, "redes" en el nombre manda sobre "referido").
+
+    Lógica AISLADA a propósito (no comparte agregación con las demás
+    funciones de este archivo) — mismo criterio de diseño que
+    `calculate_redes_revenue_chart`/`calculate_redes_initial_payments_chart`:
+    un ajuste futuro acá no debe poder afectar otra gráfica.
+
+    Columnas devueltas: "Año", "Mes_num", "Mes_Año", "Valor_Proceso_Pauta".
+    """
+    empty = pd.DataFrame(columns=_PROCESS_VALUE_COLUMNS)
+    value_cols_presentes = [c for c in _STAGE_VALUE_COLS.values() if c in df.columns]
+    if df.empty or not value_cols_presentes:
+        return empty
+
+    valid_mask = valid_closure_estado_mask(df)
+    pauta_mask = get_mask(df, "_is_marketing", is_marketing)
+    row_mask = valid_mask & pauta_mask
+    if not row_mask.any():
+        return empty
+
+    partes = []
+    for date_col, value_col in _STAGE_VALUE_COLS.items():
+        if date_col not in df.columns or value_col not in df.columns:
+            continue
+        partes.append(
+            df.loc[row_mask, [date_col, value_col]].rename(
+                columns={date_col: "Fecha", value_col: "Valor_raw"}
+            )
+        )
+    if not partes:
+        return empty
+
+    cierres = pd.concat(partes, ignore_index=True)
+    cierres["Fecha"] = pd.to_datetime(cierres["Fecha"], errors="coerce", dayfirst=True)
+    cierres = cierres.dropna(subset=["Fecha"]).copy()
+    if cierres.empty:
+        return empty
+
+    cierres["Valor_num"] = cierres["Valor_raw"].apply(_clean_importe)
+    cierres["Año"] = cierres["Fecha"].dt.year
+    cierres["Mes_num"] = cierres["Fecha"].dt.month
+    cierres["Mes_Año"] = cierres["Mes_num"].map(MESES_ES) + " " + cierres["Año"].astype(str)
+
+    grouped = (
+        cierres.groupby(["Año", "Mes_num", "Mes_Año"])["Valor_num"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Valor_num": "Valor_Proceso_Pauta"})
+        .sort_values(["Año", "Mes_num"])
+    )
+    return grouped.reset_index(drop=True)
+
+
+def combine_ad_spend_and_pauta_process_value(
+    gasto_mensual: pd.DataFrame, valor_mensual: pd.DataFrame
+) -> pd.DataFrame:
+    """Cruza gasto mensual en pauta (`ad_spend.monthly_ad_spend_with_period`)
+    con el valor total de procesos vendidos de Pauta
+    (`calculate_pauta_process_value_chart`) por período.
+
+    Outer join — mismo criterio que `combine_ad_spend_and_revenue`: un mes
+    con gasto pero sin cierres de Pauta, o con cierres pero sin gasto
+    registrado ese mes, se conserva igual (0.0 en el lado faltante). Sin
+    recorte temporal (a diferencia de `combine_ad_spend_and_revenue`/
+    `combine_ad_spend_revenue_and_roas`, que cortan "desde enero 2025") —
+    mismo criterio que `combine_ad_spend_and_closures`: aplica a todo el
+    histórico.
+
+    Columnas devueltas: "Año", "Mes_num", "Mes_Año", "Importe",
+    "Valor_Proceso_Pauta".
+    """
+    empty = pd.DataFrame(columns=_PAUTA_VS_PROCESS_VALUE_COLUMNS)
+    if gasto_mensual.empty and valor_mensual.empty:
+        return empty
+
+    gasto = gasto_mensual if not gasto_mensual.empty else pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Importe"])
+    valor = (
+        valor_mensual
+        if not valor_mensual.empty
+        else pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Valor_Proceso_Pauta"])
+    )
+
+    combined = pd.merge(gasto, valor, on=["Año", "Mes_num", "Mes_Año"], how="outer")
+    combined["Importe"] = combined["Importe"].fillna(0.0)
+    combined["Valor_Proceso_Pauta"] = combined["Valor_Proceso_Pauta"].fillna(0.0)
+    combined = combined.sort_values(["Año", "Mes_num"])
+    return combined[_PAUTA_VS_PROCESS_VALUE_COLUMNS].reset_index(drop=True)

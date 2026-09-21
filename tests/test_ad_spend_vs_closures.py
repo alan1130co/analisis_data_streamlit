@@ -2,12 +2,14 @@
 import pandas as pd
 
 from src.analytics.ad_spend_vs_closures import (
+    calculate_pauta_process_value_chart,
     calculate_redes_initial_payments_chart,
     calculate_redes_revenue_chart,
     closures_from_redes_monthly,
     closures_from_redes_total_monthly,
     combine_ad_spend_and_closures,
     combine_ad_spend_and_cost_per_lead,
+    combine_ad_spend_and_pauta_process_value,
     combine_ad_spend_and_revenue,
     combine_ad_spend_revenue_and_roas,
     combine_ad_spend_total_revenue_and_roas,
@@ -564,6 +566,117 @@ def test_calculate_redes_revenue_chart_excluye_canal_fuera_de_redes():
 
 def test_calculate_redes_revenue_chart_df_vacio():
     out = calculate_redes_revenue_chart(pd.DataFrame())
+    assert out.empty
+
+
+# ---------------------------------------------------------------------------
+# calculate_pauta_process_value_chart / combine_ad_spend_and_pauta_process_value
+# — gráfica "Gasto en pauta vs Valor Total del Proceso (cierres de redes)"
+# ---------------------------------------------------------------------------
+
+def test_calculate_pauta_process_value_chart_usa_el_campo_de_valor_correcto_por_etapa():
+    df = pd.DataFrame([
+        _fila_multietapa(
+            "Clientify - Facebook",
+            **{
+                "Fecha de cierre": "19/01/2026", "Valor total del proceso": "6000",
+                "Fecha de segundo cierre": "14/07/2026", "Valor total segundo cierre": "3500",
+            },
+        ),
+    ])
+    out = calculate_pauta_process_value_chart(df)
+
+    enero = out[out["Mes_Año"] == "Enero 2026"]
+    assert enero["Valor_Proceso_Pauta"].iloc[0] == 6000.0
+
+    julio = out[out["Mes_Año"] == "Julio 2026"]
+    assert julio["Valor_Proceso_Pauta"].iloc[0] == 3500.0  # NO 6000.0
+
+
+def test_calculate_pauta_process_value_chart_evalua_las_4_etapas():
+    df = pd.DataFrame([
+        _fila_multietapa(
+            "Tiktok",
+            **{
+                "Fecha de cierre": "01/07/2026", "Valor total del proceso": "1000",
+                "Fecha de segundo cierre": "02/07/2026", "Valor total segundo cierre": "2000",
+                "Fecha de tercer cierre": "03/07/2026", "Valor total tercer cierre": "3000",
+                "Fecha de 4to cierre": "04/07/2026", "Valor total 4to cierre": "4000",
+            },
+        ),
+    ])
+    out = calculate_pauta_process_value_chart(df)
+    assert out["Valor_Proceso_Pauta"].iloc[0] == 1000.0 + 2000.0 + 3000.0 + 4000.0
+
+
+def test_calculate_pauta_process_value_chart_excluye_referido_puro():
+    """`is_marketing` — a diferencia de `redes_channel_mask` — excluye el
+    Referido puro (sin "redes" en el nombre) de esta suma."""
+    df = pd.DataFrame([
+        _fila_multietapa("referido puro", **{"Fecha de cierre": "01/07/2026", "Valor total del proceso": "6000"}),
+    ])
+    out = calculate_pauta_process_value_chart(df)
+    assert out.empty
+
+
+def test_calculate_pauta_process_value_chart_incluye_referido_redes():
+    """"Referido cliente activo - Redes" SIGUE contando como Pauta acá
+    (regla 2026-07-03e de `is_marketing`: "redes" en el nombre manda sobre
+    "referido") — no es lo mismo que "excluye Referido puro"."""
+    df = pd.DataFrame([
+        _fila_multietapa(
+            "Referido cliente activo - Redes",
+            **{"Fecha de cierre": "01/07/2026", "Valor total del proceso": "6000"},
+        ),
+    ])
+    out = calculate_pauta_process_value_chart(df)
+    assert out["Valor_Proceso_Pauta"].iloc[0] == 6000.0
+
+
+def test_calculate_pauta_process_value_chart_excluye_estado_inactivo():
+    df = pd.DataFrame([
+        _fila_multietapa(
+            "Tiktok", estado="inactivo",
+            **{"Fecha de cierre": "01/07/2026", "Valor total del proceso": "6000"},
+        ),
+    ])
+    out = calculate_pauta_process_value_chart(df)
+    assert out.empty
+
+
+def test_calculate_pauta_process_value_chart_df_vacio():
+    out = calculate_pauta_process_value_chart(pd.DataFrame())
+    assert out.empty
+
+
+def test_combine_ad_spend_and_pauta_process_value_outer_join_sin_recorte_temporal():
+    gasto = pd.DataFrame([
+        {"Año": 2024, "Mes_num": 3, "Mes_Año": "Marzo 2024", "Importe": 500.0},
+        {"Año": 2026, "Mes_num": 7, "Mes_Año": "Julio 2026", "Importe": 1000.0},
+    ])
+    valor = pd.DataFrame([
+        {"Año": 2026, "Mes_num": 7, "Mes_Año": "Julio 2026", "Valor_Proceso_Pauta": 6000.0},
+        {"Año": 2026, "Mes_num": 8, "Mes_Año": "Agosto 2026", "Valor_Proceso_Pauta": 3000.0},
+    ])
+    out = combine_ad_spend_and_pauta_process_value(gasto, valor)
+
+    assert list(out["Mes_Año"]) == ["Marzo 2024", "Julio 2026", "Agosto 2026"]  # 2024 NO se recorta
+
+    marzo = out[out["Mes_Año"] == "Marzo 2024"].iloc[0]
+    assert marzo["Importe"] == 500.0
+    assert marzo["Valor_Proceso_Pauta"] == 0.0  # sin cierres de Pauta ese mes
+
+    agosto = out[out["Mes_Año"] == "Agosto 2026"].iloc[0]
+    assert agosto["Importe"] == 0.0  # sin gasto registrado ese mes
+    assert agosto["Valor_Proceso_Pauta"] == 3000.0
+
+    julio = out[out["Mes_Año"] == "Julio 2026"].iloc[0]
+    assert julio["Importe"] == 1000.0
+    assert julio["Valor_Proceso_Pauta"] == 6000.0
+
+
+def test_combine_ad_spend_and_pauta_process_value_ambos_vacios():
+    out = combine_ad_spend_and_pauta_process_value(pd.DataFrame(), pd.DataFrame())
     assert out.empty
 
 
