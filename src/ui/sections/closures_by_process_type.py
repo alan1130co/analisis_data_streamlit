@@ -69,7 +69,7 @@ def render_closures_by_process_type(
         hovertemplate="%{hovertext}<extra></extra>",
     )])
     fig.update_layout(
-        height=520,
+        height=440,
         # Leyenda horizontal debajo del gráfico en vez de columna vertical
         # fija a la derecha (2026-08-14): antes `legend=dict(orientation=
         # "v", x=1.02, ...)` con margin r=140 reservaba ~140px fijos de

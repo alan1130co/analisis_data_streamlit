@@ -18,6 +18,20 @@
     }
 }
 
+/* Tablas: st.dataframe ya trae scroll horizontal propio; esto es refuerzo
+   para que ningún contenedor padre la empuje a desbordar. Rango único
+   ≤1200px (tablets + celulares) en vez de duplicar la regla en el breakpoint
+   de ≤640px de más abajo — mismas tablas anchas (p.ej. Embudo por Asesor)
+   necesitan el mismo refuerzo de scroll en tablet que en celular. */
+@media (max-width: 1200px) {
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrameResizable"] {
+        max-width: 100%;
+        overflow-x: auto;
+        font-size: 0.78rem;
+    }
+}
+
 /* Celulares (~380-430px de ancho). El desktop (>768px) queda intacto. */
 @media (max-width: 640px) {
     .kpi-card {
@@ -34,15 +48,6 @@
     /* Desglose de cierres por etapa: 2x2 en vez de 4 en fila */
     .etapa-grid {
         grid-template-columns: repeat(2, 1fr);
-    }
-
-    /* Tablas: st.dataframe ya trae scroll horizontal propio; esto es
-       refuerzo para que ningún contenedor padre la empuje a desbordar. */
-    [data-testid="stDataFrame"],
-    [data-testid="stDataFrameResizable"] {
-        max-width: 100%;
-        overflow-x: auto;
-        font-size: 0.78rem;
     }
 
     /* Selector de período / uploader: alto táctil mínimo recomendado (~44px)

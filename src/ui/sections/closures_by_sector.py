@@ -70,7 +70,7 @@ def render_closures_by_sector(
         yanchor="middle",
     )
     fig.update_layout(
-        height=560,
+        height=470,
         # Leyenda horizontal debajo (2026-08-14) en vez de columna vertical
         # fija a la derecha — r=180 era el margen fijo más grande de todo
         # el dashboard: en un celular (~340px de ancho útil) dejaba la dona

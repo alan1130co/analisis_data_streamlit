@@ -76,7 +76,7 @@ def render_cierres_por_canal(
             yanchor="middle",
         )
         fig.update_layout(
-            height=460,
+            height=400,
             # l/r chicos y simétricos (2026-08-14): antes l=80/r=140 más un
             # `legend=dict(...)` de leyenda lateral vertical que nunca se
             # mostraba (`showlegend=False` — las etiquetas van adentro de la

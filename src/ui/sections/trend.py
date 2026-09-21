@@ -88,7 +88,7 @@ def render_trend(
     )
 
     fig.update_layout(
-        height=420,
+        height=380,
         margin=dict(l=0, r=60, t=30, b=20),
         plot_bgcolor=_TRANSPARENT,
         paper_bgcolor=_TRANSPARENT,

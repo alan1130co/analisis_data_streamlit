@@ -56,7 +56,7 @@ def render_closures_by_city(
         textfont=dict(size=14),
     )
     fig.update_layout(
-        height=460,
+        height=400,
         margin=dict(l=10, r=10, t=10, b=10),
         coloraxis_showscale=False,
     )

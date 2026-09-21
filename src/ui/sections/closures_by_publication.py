@@ -117,7 +117,7 @@ def render_closures_by_publication(
         )])
         total_origen = int(dist_origen["Cierres"].sum())
         fig2.update_layout(
-            height=460,
+            height=400,
             # Leyenda horizontal debajo (2026-08-14) en vez de columna
             # vertical fija a la derecha — mismo fix que el resto de las
             # donas de esta sección (`closures_by_sector.py`,
