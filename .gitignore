@@ -39,3 +39,9 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 !.streamlit/config.toml
+
+# Datos reales de clientes descargados por scripts de diagnóstico
+scratch/
+
+# Cache en disco de la sincronización con la API de Clientify
+data/cache/

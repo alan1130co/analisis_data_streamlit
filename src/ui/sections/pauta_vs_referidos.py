@@ -63,7 +63,7 @@ def render_pauta_vs_referidos(
         yanchor="middle",
     )
     fig.update_layout(
-        height=480,
+        height=410,
         # l/r chicos y simétricos (2026-08-14): antes l=80/r=120 — margen
         # muerto sobrante de una leyenda lateral que este gráfico nunca usó
         # (`showlegend=False`, las etiquetas van adentro de la dona vía

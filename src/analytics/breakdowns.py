@@ -6,6 +6,8 @@ NO importan Streamlit ni nada de la UI.
 """
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 
 from src.analytics.metrics import (
@@ -16,6 +18,8 @@ from src.analytics.metrics import (
     valid_closure_estado_mask,
 )
 from src.config.settings import REFERIDO_PREFIX
+
+logger = logging.getLogger(__name__)
 
 _CLOSE_COLS = [
     "Fecha de cierre",
@@ -362,6 +366,26 @@ _CANALES_WHATSAPP_FACEBOOK_CP = {
 }
 
 
+def _warn_creado_posterior_a_cierre(
+    df_full: pd.DataFrame, idx, close_col: str, creado_val, cierre_val
+) -> None:
+    """Loguea (WARNING) un caso de dato inconsistente en Clientify: un lead
+    cuyo "creado" es posterior a su propia fecha de cierre — imposible en la
+    realidad, visto por primera vez 2026-09-11 con el contacto "Frank..."
+    (creado 2026-09-08, 1er cierre 2026-08-07). No es un bug de parseo de
+    fechas ni de la columna usada (ver diagnóstico) — el valor ya viene así
+    en el Excel crudo. Se deja como advertencia visible en consola para que,
+    si vuelve a pasar con otro contacto, no pase desapercibido."""
+    nombre = _safe_str(df_full.at[idx, "nombre"]) if "nombre" in df_full.columns else ""
+    etiqueta = nombre or f"index={idx}"
+    logger.warning(
+        "Dato inconsistente en Clientify: contacto %r (index=%s) tiene "
+        "'creado'=%s posterior a su cierre en columna %r (%s) — excluido del "
+        "desglose por mes de origen (sigue contando en el total de cierres).",
+        etiqueta, idx, creado_val, close_col, cierre_val,
+    )
+
+
 def cierres_whatsapp_facebook_cp_por_mes_origen(
     df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int
 ) -> pd.DataFrame:
@@ -376,6 +400,15 @@ def cierres_whatsapp_facebook_cp_por_mes_origen(
     `year`/`month` son OBLIGATORIOS: el mismo período ya resuelto por el
     selector de la sección "Pauta vs Referidos" (mismo patrón que las
     funciones hermanas de arriba).
+
+    Excluye (y loguea vía `_warn_creado_posterior_a_cierre`) cualquier cierre
+    cuyo "creado" sea posterior a la fecha de cierre que se está evaluando —
+    dato inconsistente de Clientify (confirmado 2026-09-11: no es un bug de
+    columna ni de parseo, ver diagnóstico), que de otro modo generaría un mes
+    de origen lógicamente imposible (p.ej. un cierre de agosto "originado" en
+    septiembre). Estos casos SÍ deben seguir contando en el total general de
+    cierres del canal — usar `cierres_whatsapp_facebook_cp_totales_por_canal`
+    para ese total, no la suma de esta tabla.
 
     Columnas: "Mes de Origen" (str, formato "YYYY-MM"), "Canal", "Cantidad".
     Formato largo, ordenado cronológicamente ascendente por Mes de Origen.
@@ -400,6 +433,15 @@ def cierres_whatsapp_facebook_cp_por_mes_origen(
         in_month = (dt.dt.year == year) & (dt.dt.month == month) & active_full & canal_mask
         if not in_month.any():
             continue
+
+        inconsistente = in_month & creado.notna() & dt.notna() & (creado > dt)
+        if inconsistente.any():
+            for idx in df_full.index[inconsistente]:
+                _warn_creado_posterior_a_cierre(df_full, idx, col, creado.loc[idx], dt.loc[idx])
+            in_month = in_month & ~inconsistente
+            if not in_month.any():
+                continue
+
         frames.append(pd.DataFrame({
             "Mes de Origen": mes_origen[in_month],
             "Canal": canal_off[in_month].map(_CANALES_WHATSAPP_FACEBOOK_CP),
@@ -414,6 +456,48 @@ def cierres_whatsapp_facebook_cp_por_mes_origen(
 
     out = all_rows.groupby(["Mes de Origen", "Canal"]).size().reset_index(name="Cantidad")
     return out.sort_values("Mes de Origen", ascending=True).reset_index(drop=True)
+
+
+def cierres_whatsapp_facebook_cp_totales_por_canal(
+    df_period: pd.DataFrame, df_full: pd.DataFrame, year: int, month: int
+) -> pd.DataFrame:
+    """Total de cierres válidos del mes por canal, para los mismos 2 canales
+    que `cierres_whatsapp_facebook_cp_por_mes_origen` (Clientify - Whatsapp y
+    Formulario de Facebook - Cliente Potencial), pero SIN agrupar por mes de
+    origen y SIN excluir los casos de "creado" posterior a la fecha de cierre.
+
+    Existe porque esa función hermana SÍ excluye esos casos inconsistentes de
+    su desglose (para no mostrar un mes de origen imposible) — si la tarjeta
+    "Total de cierres — <canal>" de la UI sumara ese desglose, un dato
+    inconsistente puntual haría bajar el total mostrado. Este total es
+    independiente de ese filtro y debe alimentar esa tarjeta.
+
+    Columnas: "Canal", "Cantidad".
+    """
+    empty = pd.DataFrame(columns=["Canal", "Cantidad"])
+    if df_period.empty or "Canal offline" not in df_full.columns:
+        return empty
+
+    active_full = valid_closure_estado_mask(df_full)
+    canal_off = df_full["Canal offline"].apply(_safe_str).str.strip().str.lower()
+    canal_mask = canal_off.isin(_CANALES_WHATSAPP_FACEBOOK_CP.keys())
+
+    canales = []
+    for col in _CLOSE_COLS:
+        if col not in df_full.columns:
+            continue
+        dt = pd.to_datetime(df_full[col], errors="coerce")
+        in_month = (dt.dt.year == year) & (dt.dt.month == month) & active_full & canal_mask
+        if not in_month.any():
+            continue
+        canales.append(canal_off[in_month].map(_CANALES_WHATSAPP_FACEBOOK_CP))
+
+    if not canales:
+        return empty
+
+    out = pd.concat(canales).value_counts().reset_index()
+    out.columns = ["Canal", "Cantidad"]
+    return out.reset_index(drop=True)
 
 
 def cierres_por_canal(

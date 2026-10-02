@@ -4,11 +4,14 @@ Clientify Analyzer - punto de entrada Streamlit.
 Ejecutar con:
     streamlit run app.py
 """
+import time
+
 import streamlit as st
 
 from src.auth import check_password
+from src.utils.sync_timing import log_marker, timed_stage
 from src.config.settings import APP_TITLE
-from src.ui.upload import render_upload
+from src.ui.data_source_selector import render_data_source_selector
 from src.ui.kpi_cards import render_kpi_cards
 from src.ui.styles import inject_custom_css
 from src.analytics.metrics import compute_all_metrics, is_marketing
@@ -49,6 +52,8 @@ from src.ui.sections.ad_spend_vs_process_value import render_ad_spend_vs_process
 
 
 def main():
+    script_start = time.perf_counter()
+    log_marker("################ main(): INICIO de rerun de Streamlit ################")
     st.set_page_config(
         page_title=APP_TITLE,
         page_icon="📊",
@@ -64,35 +69,17 @@ def main():
     st.title(APP_TITLE)
     st.caption("Dashboard comercial de Clientify — análisis de leads, calificaciones y cierres")
 
-    if "df" not in st.session_state:
-        st.session_state.df = None
-        st.session_state.source_name = None
-
+    # --- Facturación/Inversión de Meta Ads: NO depende de la fuente de
+    # contactos de Clientify (Excel/API) — se carga y renderiza ANTES de
+    # tocar `render_data_source_selector()` a propósito. Ese selector puede
+    # bloquear el script varios minutos (sync completo de ~34k contactos
+    # contra la API real, ver `src/ui/api_source.py`), y Streamlit ejecuta
+    # el script de arriba hacia abajo en un solo hilo: cualquier `st.*` que
+    # aparezca DESPUÉS de una llamada bloqueante no se pinta hasta que esa
+    # llamada termina. Sin este reordenamiento, hasta el uploader de Meta
+    # Ads y la gráfica "Gasto en pauta" (que no necesitan ni un contacto de
+    # Clientify) se quedaban congelados detrás del spinner de sync.
     with st.sidebar:
-        st.header("Fuente de datos")
-        source = st.radio(
-            "¿De dónde cargar los datos?",
-            options=["Archivo Excel", "API Clientify (próximamente)"],
-            index=0,
-        )
-
-        if source == "Archivo Excel":
-            df, source_name = render_upload()
-            if df is not None:
-                st.session_state.df = df
-                st.session_state.source_name = source_name
-        else:
-            st.info("La integración con la API de Clientify se conectará aquí. Por ahora usá el Excel.")
-
-        if st.session_state.df is not None:
-            st.success(f"✅ Datos cargados: {st.session_state.source_name}")
-            st.caption(f"{len(st.session_state.df):,} registros")
-            if st.button("🔄 Cargar otro archivo", use_container_width=True):
-                st.session_state.df = None
-                st.session_state.source_name = None
-                st.rerun()
-
-        st.markdown("---")
         st.markdown("### 💰 Facturación / Inversión (Meta Ads)")
         meta_billing_files = st.file_uploader(
             "Cargar reportes de Facturación/Inversión (Meta Ads)",
@@ -106,40 +93,7 @@ def main():
             ),
         )
         st.session_state.meta_billing_files = meta_billing_files
-
-        st.divider()
-        equipo = "todos"
-
-
-    if st.session_state.df is None:
-        st.info("👈 Cargá un archivo Excel desde el panel lateral para comenzar el análisis.")
-        return
-
-    df_original = st.session_state.df
-    df_unfiltered = df_original
-
-    # df filtrado por equipo — solo para las secciones de detalle
-    df = df_original.copy()
-
-    months = available_months(df_unfiltered)
-    selected = st.selectbox(
-        "Período de análisis",
-        options=months,
-        index=default_month_index(months),
-        format_func=lambda m: format_month_label(m),
-    )
-
-    # Métricas siempre sobre el dataset completo — los campos internos ya separan pauta/referido
-    df_period_full = filter_by_month(df_unfiltered, selected)
-    prev = previous_month(selected)
-    df_period_prev = filter_by_month(df_unfiltered, prev)
-
-    metrics = compute_all_metrics(df_period_full, df_unfiltered)
-    metrics_prev = compute_all_metrics(df_period_prev, df_unfiltered)
-
-    # df filtrado para las secciones de detalle
-    df_current = filter_by_month(df, selected)
-    df_full = df
+        st.markdown("---")
 
     st.markdown("---")
 
@@ -150,80 +104,162 @@ def main():
         "🧾 Gestión Comercial",
     ])
 
-    # === TAB 1: Marketing e Inversión — gasto en pauta, costo por lead, ROAS ===
-    with tab1:
-        meta_billing_files = st.session_state.get("meta_billing_files")
+    # Esta parte de TAB 1 (gráfica "Gasto en pauta publicitaria") usa
+    # ÚNICAMENTE los archivos de Meta Ads ya subidos — se renderiza YA, sin
+    # esperar a que la fuente de contactos (elegida más abajo) termine de
+    # cargar. Las otras 6 gráficas de esta pestaña SÍ cruzan gasto con
+    # leads/cierres de Clientify (reciben `df_clientify` — confirmado en
+    # cada una de sus firmas), así que esas quedan más abajo, después de que
+    # `df_unfiltered` exista.
+    with timed_stage("load_ad_spend_files (Meta Ads)"):
         gasto_raw = load_ad_spend_files(meta_billing_files)
+    with tab1:
         render_ad_spend(meta_billing_files)
-        st.markdown("---")
-        render_ad_spend_vs_closures(gasto_raw, df_unfiltered)
-        st.markdown("---")
-        render_ad_spend_cost_per_lead(gasto_raw, df_unfiltered)
-        st.markdown("---")
-        render_ad_spend_vs_revenue(gasto_raw, df_unfiltered)
-        st.markdown("---")
-        render_ad_spend_roas(gasto_raw, df_unfiltered)
-        st.markdown("---")
-        render_ad_spend_total_roas(gasto_raw, df_unfiltered)
-        st.markdown("---")
-        render_ad_spend_vs_process_value(gasto_raw, df_unfiltered)
+
+    # --- Fuente de contactos de Clientify (Excel o API): puede bloquear el
+    # script varios minutos si dispara un sync completo contra la API real.
+    # Se pide DESPUÉS de todo lo que no depende de ella (ver comentario de
+    # arriba). ---
+    with st.sidebar:
+        with timed_stage("render_data_source_selector (incluye fetch/cache de la fuente elegida)"):
+            render_data_source_selector()
+        st.divider()
+        equipo = "todos"
+
+    if st.session_state.df is None:
+        with tab1:
+            st.markdown("---")
+            st.info(
+                "👈 Elegí una fuente de datos de Clientify en el panel lateral "
+                "para ver el cruce con leads/cierres en el resto de esta pestaña."
+            )
+        for tab in (tab2, tab3, tab4):
+            with tab:
+                st.info("👈 Elegí una fuente de datos en el panel lateral para comenzar el análisis.")
+        log_marker(
+            f"################ main(): FIN de rerun (sin fuente de datos) — "
+            f"{time.perf_counter() - script_start:.2f} segundos totales ################"
+        )
+        return
+
+    df_original = st.session_state.df
+    df_unfiltered = df_original
+
+    # df filtrado por equipo — solo para las secciones de detalle
+    df = df_original.copy()
+
+    # "Período de análisis" se movió al sidebar (antes vivía en el cuerpo
+    # principal, arriba de los tabs). Con `st.tabs()` ahora creado ANTES de
+    # cargar la fuente de contactos (ver más arriba), cualquier elemento de
+    # nivel superior escrito acá con `st.*` aparecería DEBAJO de los 4 tabs
+    # en vez de arriba — Streamlit ancla el widget de tabs en el punto donde
+    # se llamó `st.tabs()`, y el flujo principal sigue después de él. El
+    # sidebar no tiene ese problema (es un contenedor aparte), así que el
+    # selector queda ahí, junto al resto de los controles de datos.
+    with st.sidebar:
+        months = available_months(df_unfiltered)
+        selected = st.selectbox(
+            "Período de análisis",
+            options=months,
+            index=default_month_index(months),
+            format_func=lambda m: format_month_label(m),
+        )
+
+    # Métricas siempre sobre el dataset completo — los campos internos ya separan pauta/referido
+    df_period_full = filter_by_month(df_unfiltered, selected)
+    prev = previous_month(selected)
+    df_period_prev = filter_by_month(df_unfiltered, prev)
+
+    with timed_stage("compute_all_metrics (período actual + anterior)"):
+        metrics = compute_all_metrics(df_period_full, df_unfiltered)
+        metrics_prev = compute_all_metrics(df_period_prev, df_unfiltered)
+
+    # df filtrado para las secciones de detalle
+    df_current = filter_by_month(df, selected)
+    df_full = df
+
+    # === TAB 1 (continuación): las 6 gráficas que SÍ cruzan gasto en pauta
+    # con leads/cierres de Clientify — recién acá, con `df_unfiltered` ya
+    # disponible ===
+    with timed_stage("Render TAB 1 - gráficas gasto vs Clientify (6 gráficas)"):
+        with tab1:
+            st.markdown("---")
+            render_ad_spend_vs_closures(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_ad_spend_cost_per_lead(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_ad_spend_vs_revenue(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_ad_spend_roas(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_ad_spend_total_roas(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_ad_spend_vs_process_value(gasto_raw, df_unfiltered)
 
     # === TAB 2: Segmentación Clave — quién cierra (geografía, demografía, proceso) ===
-    with tab2:
-        render_closures_by_process_type(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_country(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_state(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_city(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_sector(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_age(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_gender(df, selected.year, selected.month)
+    with timed_stage("Render TAB 2 - Segmentación Clave"):
+        with tab2:
+            render_closures_by_process_type(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_country(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_state(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_city(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_sector(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_age(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_gender(df, selected.year, selected.month)
 
     # === TAB 3: Embudo y Canales — de dónde entran los leads y cómo avanzan ===
-    with tab3:
-        st.subheader("👤 Análisis por Asesor")
-        render_funnel(df_full, selected.year, selected.month)
-        st.markdown("---")
-        periodo_pauta_referidos = render_pauta_vs_referidos(df, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        if periodo_pauta_referidos is not None:
-            render_pauta_vs_referidos_antiguedad(df_full, *periodo_pauta_referidos)
+    with timed_stage("Render TAB 3 - Embudo y Canales"):
+        with tab3:
+            st.subheader("👤 Análisis por Asesor")
+            render_funnel(df_full, selected.year, selected.month)
             st.markdown("---")
-        render_cierres_por_canal(df_full, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
-        st.markdown("---")
-        render_closures_by_publication(df_unfiltered, selected.year, selected.month)
-        st.markdown("---")
-        render_closures_by_channel_over_time(df_unfiltered)
+            periodo_pauta_referidos = render_pauta_vs_referidos(df, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            if periodo_pauta_referidos is not None:
+                render_pauta_vs_referidos_antiguedad(df_full, *periodo_pauta_referidos)
+                st.markdown("---")
+            render_cierres_por_canal(df_full, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_campaign(df_full, selected.year, selected.month, team=equipo)
+            st.markdown("---")
+            render_closures_by_publication(df_unfiltered, selected.year, selected.month)
+            st.markdown("---")
+            render_closures_by_channel_over_time(df_unfiltered)
 
     # === TAB 4: Gestión Comercial — KPIs, operación diaria, tendencias, detalle ===
-    with tab4:
-        render_kpi_cards(metrics, metrics_prev=metrics_prev, team=equipo)
-        st.markdown("---")
-        render_closures_vs_second_closures(df_unfiltered)
-        st.markdown("---")
-        render_daily_sales(df_full, selected)
-        st.markdown("---")
-        render_no_closure_history(df_unfiltered, default_year=selected.year, default_month=selected.month)
-        st.markdown("---")
-        render_comparison(df_unfiltered, selected)
-        st.markdown("---")
-        render_trend(df_unfiltered, default_month=selected)
-        st.markdown("---")
-        render_leads_summary(df_unfiltered, default_month=selected)
+    with timed_stage("Render TAB 4 - Gestión Comercial"):
+        with tab4:
+            render_kpi_cards(metrics, metrics_prev=metrics_prev, team=equipo)
+            st.markdown("---")
+            render_closures_vs_second_closures(df_unfiltered)
+            st.markdown("---")
+            render_daily_sales(df_full, selected)
+            st.markdown("---")
+            render_no_closure_history(df_unfiltered, default_year=selected.year, default_month=selected.month)
+            st.markdown("---")
+            render_comparison(df_unfiltered, selected)
+            st.markdown("---")
+            render_trend(df_unfiltered, default_month=selected)
+            st.markdown("---")
+            render_leads_summary(df_unfiltered, default_month=selected)
 
-        with st.expander("Ver datos del período"):
-            # Las columnas "_is_*" son derivadas internas precalculadas por
-            # precompute_derived_columns (ver src/ui/upload.py) para acelerar los
-            # cálculos — no son datos del Excel original, no deben mostrarse acá.
-            cols_visibles = [c for c in df_current.columns if not c.startswith("_is_")]
-            st.dataframe(df_current[cols_visibles], use_container_width=True)
+            with st.expander("Ver datos del período"):
+                # Las columnas "_is_*" son derivadas internas precalculadas por
+                # precompute_derived_columns (ver src/ui/upload.py) para acelerar los
+                # cálculos — no son datos del Excel original, no deben mostrarse acá.
+                cols_visibles = [c for c in df_current.columns if not c.startswith("_is_")]
+                st.dataframe(df_current[cols_visibles], use_container_width=True)
+
+    log_marker(
+        f"################ main(): FIN de rerun (con datos) — "
+        f"{time.perf_counter() - script_start:.2f} segundos totales ################"
+    )
 
 
 if __name__ == "__main__":

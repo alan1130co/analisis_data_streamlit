@@ -8,6 +8,7 @@ import streamlit as st
 from src.analytics.breakdowns import (
     available_periods,
     cierres_whatsapp_facebook_cp_por_mes_origen,
+    cierres_whatsapp_facebook_cp_totales_por_canal,
     pauta_vs_referidos_por_antiguedad_detalle,
 )
 from src.ui.period_selector import render_period_selector
@@ -113,6 +114,12 @@ def render_pauta_vs_referidos_antiguedad(df_full: pd.DataFrame, year: int, month
     # formato largo, sin cambios) — 2026-09-08b: cada canal se muestra como
     # torta (una porción por mes de origen), en vez de barras.
     data_wf = cierres_whatsapp_facebook_cp_por_mes_origen(df_full, df_full, year_wf, month_wf)
+    # Total INDEPENDIENTE del desglose por mes de origen (ver docstring de
+    # `cierres_whatsapp_facebook_cp_totales_por_canal`) — el desglose excluye
+    # casos con "creado" posterior a la fecha de cierre (dato inconsistente
+    # de Clientify), pero esos casos deben seguir contando en el total.
+    totales_wf = cierres_whatsapp_facebook_cp_totales_por_canal(df_full, df_full, year_wf, month_wf)
+    totales_por_canal = totales_wf.set_index("Canal")["Cantidad"].to_dict() if not totales_wf.empty else {}
     if data_wf.empty:
         st.info("No hay cierres de estos 2 canales en este período.")
         return
@@ -147,7 +154,7 @@ def render_pauta_vs_referidos_antiguedad(df_full: pd.DataFrame, year: int, month
         )
         st.plotly_chart(fig_canal, use_container_width=True)
 
-        total_canal = int(data_canal.sum())
+        total_canal = int(totales_por_canal.get(canal, data_canal.sum()))
         mes_lider = data_canal.idxmax()
         cantidad_lider = int(data_canal.max())
         cc1, cc2 = st.columns(2)

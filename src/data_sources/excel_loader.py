@@ -4,7 +4,7 @@ from typing import IO, Union
 
 import pandas as pd
 
-from .base import ContactsDataSource
+from .base import ContactsDataSource, normalize_contacts_df
 
 
 class ExcelContactsLoader(ContactsDataSource):
@@ -21,7 +21,7 @@ class ExcelContactsLoader(ContactsDataSource):
 
     def load(self) -> pd.DataFrame:
         df = self._read_excel()
-        df = self._normalize(df)
+        df = normalize_contacts_df(df)
         return df
 
     def _read_excel(self) -> pd.DataFrame:
@@ -43,33 +43,3 @@ class ExcelContactsLoader(ContactsDataSource):
                 if hasattr(self.file, "seek"):
                     self.file.seek(0)
         return pd.read_excel(self.file, sheet_name=self.sheet_name)
-
-    @staticmethod
-    def _normalize(df: pd.DataFrame) -> pd.DataFrame:
-        """Limpia espacios en nombres de columna y parsea fechas."""
-        # Quitar espacios sobrantes en los nombres de columnas
-        df.columns = [c.strip() for c in df.columns]
-
-        # Parsear columnas de fecha relevantes
-        date_cols = [
-            "creado",
-            "último contacto",
-            "Fecha de cierre",
-            "Fecha de segundo cierre",
-            "Fecha de tercer cierre",
-            "Fecha de 4to cierre",
-        ]
-        for col in date_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
-
-        # Normalizar texto
-        text_cols = [
-            "estado", "canal online", "Origen de la pauta", "propietario",
-            "Motivo de no cierre", "Canal offline", "origen contacto",
-        ]
-        for col in text_cols:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.strip().str.lower().replace("nan", pd.NA)
-
-        return df

@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+import streamlit as st
+
 # Cargar .env desde la raíz del proyecto
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 try:
@@ -11,18 +13,41 @@ except Exception:
     # En Streamlit Cloud no hay .env, se usan st.secrets
     pass
 
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Lee un secreto primero desde `st.secrets` (Streamlit Cloud), y si no
+    está disponible cae a la variable de entorno / `.env` (desarrollo
+    local) — mismo patrón de fallback que `check_password()` usa en
+    `src/auth.py`. Nunca lanza excepción: si ninguna de las dos fuentes
+    tiene el valor, devuelve `default` para que el resto de la app siga
+    funcionando (p.ej. con Excel) mientras la key no esté configurada.
+    """
+    try:
+        value = st.secrets[key]
+        if value:
+            return value
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
 # --- App ---
 APP_TITLE: str = os.getenv("APP_TITLE", "Clientify Analyzer")
 APP_TIMEZONE: str = os.getenv("APP_TIMEZONE", "America/Bogota")
 
 # --- Clientify API ---
-CLIENTIFY_API_TOKEN: str = os.getenv("CLIENTIFY_API_TOKEN", "")
-CLIENTIFY_BASE_URL: str = os.getenv("CLIENTIFY_BASE_URL", "https://api.clientify.net/v1")
+CLIENTIFY_API_TOKEN: str = _get_secret("CLIENTIFY_API_TOKEN", "")
+CLIENTIFY_BASE_URL: str = _get_secret("CLIENTIFY_BASE_URL", "https://api.clientify.net/v1")
 
 # --- Rutas ---
 DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
+# Cache en disco de la sincronización con la API de Clientify (ver
+# src/data_sources/clientify_api.py) — persiste entre reinicios de la app,
+# a diferencia de @st.cache_data (en memoria del proceso). Gitignored
+# (contiene datos reales de clientes), igual que scratch/.
+CACHE_DIR = DATA_DIR / "cache"
 
 # --- Calificación del lead (columna "Motivo de no cierre") ---
 # Strings ya normalizados (lower + strip), igual que hace _normalize() en el loader.

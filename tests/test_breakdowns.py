@@ -10,6 +10,7 @@ from src.analytics.breakdowns import (
     available_periods,
     cierres_por_canal,
     cierres_whatsapp_facebook_cp_por_mes_origen,
+    cierres_whatsapp_facebook_cp_totales_por_canal,
     efficiency_by_advisor,
     pauta_vs_referidos,
     pauta_vs_referidos_por_antiguedad,
@@ -507,6 +508,48 @@ def test_wf_por_mes_origen_df_period_vacio_devuelve_columnas_vacias():
     result = cierres_whatsapp_facebook_cp_por_mes_origen(empty, empty, 2026, 4)
     assert result.empty
     assert list(result.columns) == ["Mes de Origen", "Canal", "Cantidad"]
+
+
+def test_wf_por_mes_origen_excluye_creado_posterior_a_cierre(caplog):
+    """Caso real "Frank..." (2026-09-11): creado 1 mes DESPUÉS del cierre —
+    dato inconsistente de Clientify, no debe generar un mes de origen
+    imposible (p.ej. "2026-09" para un cierre de agosto). Debe loguearse
+    como advertencia y no aparecer en el desglose por mes de origen, pero el
+    resto de cierres válidos del período sigue contando normalmente."""
+    df = pd.DataFrame([
+        # Frank: creado SEPTIEMBRE, 1er cierre AGOSTO — imposible.
+        _wf_lead("clientify - whatsapp", datetime(2026, 9, 8, 7, 55, 54), datetime(2026, 8, 7)),
+        # Cierre normal del mismo canal/mes, creado antes del cierre.
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 3)),
+    ])
+    with caplog.at_level("WARNING"):
+        result = cierres_whatsapp_facebook_cp_por_mes_origen(df, df, 2026, 8)
+
+    assert "2026-09" not in set(result["Mes de Origen"])
+    por_mes = result.set_index("Mes de Origen")["Cantidad"]
+    assert int(por_mes["2026-07"]) == 1
+    assert int(result["Cantidad"].sum()) == 1
+    assert any("inconsistente" in msg.lower() for msg in caplog.messages)
+
+
+def test_wf_totales_por_canal_incluye_el_caso_de_creado_posterior_a_cierre():
+    """El total por canal (para la tarjeta) NO debe excluir el caso
+    inconsistente — a diferencia del desglose por mes de origen, sigue
+    contando en el total general de cierres."""
+    df = pd.DataFrame([
+        _wf_lead("clientify - whatsapp", datetime(2026, 9, 8, 7, 55, 54), datetime(2026, 8, 7)),
+        _wf_lead("clientify - whatsapp", datetime(2026, 7, 1), datetime(2026, 8, 3)),
+    ])
+    totales = cierres_whatsapp_facebook_cp_totales_por_canal(df, df, 2026, 8)
+    por_canal = totales.set_index("Canal")["Cantidad"]
+    assert int(por_canal["Clientify - Whatsapp"]) == 2
+
+
+def test_wf_totales_por_canal_df_period_vacio_devuelve_columnas_vacias():
+    empty = pd.DataFrame(columns=["Canal offline"])
+    result = cierres_whatsapp_facebook_cp_totales_por_canal(empty, empty, 2026, 4)
+    assert result.empty
+    assert list(result.columns) == ["Canal", "Cantidad"]
 
 
 # ---------------------------------------------------------------------------
