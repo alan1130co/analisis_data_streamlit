@@ -5,6 +5,7 @@ from src.analytics.ad_spend import (
     TODOS,
     _clean_importe,
     anios_disponibles,
+    avoid_label_collision_positions,
     combine_ad_spend_sources,
     compact_month_xaxis_range,
     filter_by_anio_mes,
@@ -223,3 +224,97 @@ def test_compact_month_xaxis_range_etiqueta_no_encontrada_devuelve_none():
     """Combinación Año+Mes específicos pero sin datos en categoryarray
     (p.ej. filtro sin coincidencias) — no hay índice que devolver."""
     assert compact_month_xaxis_range(_LABELS_2_ANIOS, 2025, "Septiembre") is None
+
+
+# ---------------------------------------------------------------------------
+# avoid_label_collision_positions — anti-colisión de etiquetas en gráficas de
+# barras + línea (ad_spend_cost_per_lead.py, ad_spend_vs_closures.py,
+# ad_spend_roas.py, ad_spend_total_roas.py, ad_spend_vs_process_value_roas.py)
+# ---------------------------------------------------------------------------
+
+def test_avoid_label_collision_positions_misma_altura_normalizada_manda_abajo():
+    """Barra al 90% de su eje y línea al 92% del suyo (fracciones muy
+    cercanas, aunque los valores crudos sean totalmente distintos:
+    $7,656.03 vs $390.67) -> colisión -> la etiqueta de la línea se manda
+    abajo del marcador."""
+    positions = avoid_label_collision_positions(
+        categories=["Marzo 2025"],
+        values=[390.67],
+        axis_max=423.0,  # 390.67 / 423.0 ~= 0.923
+        reference_categories=["Marzo 2025"],
+        reference_values=[7656.03],
+        reference_axis_max=8500.0,  # 7656.03 / 8500.0 ~= 0.901
+    )
+    assert positions == ["bottom center"]
+
+
+def test_avoid_label_collision_positions_alturas_distintas_mantiene_arriba():
+    """Barra baja (20% de su eje) y línea alta (90% del suyo) -> sin
+    colisión -> se mantiene "top center" (comportamiento actual)."""
+    positions = avoid_label_collision_positions(
+        categories=["Marzo 2025"],
+        values=[90.0],
+        axis_max=100.0,
+        reference_categories=["Marzo 2025"],
+        reference_values=[20.0],
+        reference_axis_max=100.0,
+    )
+    assert positions == ["top center"]
+
+
+def test_avoid_label_collision_positions_categoria_sin_referencia_mantiene_arriba():
+    """Un mes que la línea trae pero que no tiene barra visible (filtrado
+    por Año/Mes puntual en las gráficas de ROAS, ver `ad_spend_roas.py`) no
+    tiene con qué chocar -> "top center"."""
+    positions = avoid_label_collision_positions(
+        categories=["Abril 2025"],
+        values=[50.0],
+        axis_max=100.0,
+        reference_categories=["Marzo 2025"],
+        reference_values=[90.0],
+        reference_axis_max=100.0,
+    )
+    assert positions == ["top center"]
+
+
+def test_avoid_label_collision_positions_toma_la_fraccion_mas_alta_entre_barras_repetidas():
+    """Barras agrupadas (2 series) para el mismo mes — se compara contra la
+    MÁS ALTA de las 2 (la que de verdad compite por el mismo espacio
+    vertical), no contra un promedio ni la primera que aparezca."""
+    positions = avoid_label_collision_positions(
+        categories=["Marzo 2025"],
+        values=[88.0],
+        axis_max=100.0,
+        reference_categories=["Marzo 2025", "Marzo 2025"],
+        reference_values=[10.0, 90.0],  # la 2da barra (90) sí colisiona
+        reference_axis_max=100.0,
+    )
+    assert positions == ["bottom center"]
+
+
+def test_avoid_label_collision_positions_varios_puntos_mezcla_arriba_y_abajo():
+    positions = avoid_label_collision_positions(
+        categories=["Marzo 2025", "Abril 2025"],
+        values=[90.0, 20.0],
+        axis_max=100.0,
+        reference_categories=["Marzo 2025", "Abril 2025"],
+        reference_values=[92.0, 95.0],
+        reference_axis_max=100.0,
+    )
+    assert positions == ["bottom center", "top center"]
+
+
+def test_avoid_label_collision_positions_valores_cero_no_rompen():
+    positions = avoid_label_collision_positions(
+        categories=["Marzo 2025"],
+        values=[0.0],
+        axis_max=100.0,
+        reference_categories=["Marzo 2025"],
+        reference_values=[0.0],
+        reference_axis_max=0.0,
+    )
+    assert positions == ["top center"]
+
+
+def test_avoid_label_collision_positions_listas_vacias_devuelve_vacio():
+    assert avoid_label_collision_positions([], [], 1.0, [], [], 1.0) == []

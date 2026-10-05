@@ -49,6 +49,7 @@ from src.ui.sections.ad_spend_vs_revenue import render_ad_spend_vs_revenue
 from src.ui.sections.ad_spend_roas import render_ad_spend_roas
 from src.ui.sections.ad_spend_total_roas import render_ad_spend_total_roas
 from src.ui.sections.ad_spend_vs_process_value import render_ad_spend_vs_process_value
+from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas
 
 
 def main():
@@ -195,6 +196,8 @@ def main():
             render_ad_spend_total_roas(gasto_raw, df_unfiltered)
             st.markdown("---")
             render_ad_spend_vs_process_value(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_ad_spend_vs_process_value_roas(gasto_raw, df_unfiltered)
 
     # === TAB 2: Segmentación Clave — quién cierra (geografía, demografía, proceso) ===
     with timed_stage("Render TAB 2 - Segmentación Clave"):

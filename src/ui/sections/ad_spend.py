@@ -116,14 +116,21 @@ def render_ad_spend(uploaded_files) -> None:
         color_discrete_sequence=px.colors.qualitative.Bold,
     )
     fig.update_xaxes(type="category", categoryorder="array", categoryarray=orden_meses)
-    fig.update_traces(texttemplate="$%{text:,.2f}", textposition="outside")
+    fig.update_traces(texttemplate="$%{text:,.2f}", textposition="outside", cliponaxis=False)
+
+    # Rango del eje Y con margen extra por encima de la barra más alta, para
+    # que la etiqueta de valor ("$6,711.82") nunca quede recortada arriba —
+    # mismo patrón ya usado en ad_spend_roas.py/ad_spend_total_roas.py.
+    max_y = data["Importe"].max() if not data.empty else 0
+    ymax = max_y * 1.25 if max_y > 0 else 1
+
     fig.update_layout(
         template="plotly_white",
         xaxis_title="Mes y año",
-        yaxis_title="Total pagado (USD)",
+        yaxis=dict(title="Total pagado (USD)", range=[0, ymax]),
         xaxis_tickangle=-45,
         showlegend=False,
         bargap=0.25,
-        margin=dict(t=40),
+        margin=dict(t=80),
     )
     st.plotly_chart(fig, use_container_width=True)

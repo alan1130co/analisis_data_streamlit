@@ -10,6 +10,7 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
+    avoid_label_collision_positions,
     filter_by_anio_mes,
     monthly_ad_spend,
 )
@@ -66,6 +67,28 @@ def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.Data
     labels_permitidos = filter_by_anio_mes(meses_disponibles, anio_sel, mes_sel)
     df_comb = df_comb[df_comb["Mes_Año"].isin(labels_permitidos)]
 
+    # Rango de cada eje Y con margen extra por encima de su valor más alto,
+    # para que la etiqueta de valor nunca quede recortada arriba.
+    max_y1 = df_comb["Importe"].max() if not df_comb.empty else 0
+    ymax1 = max_y1 * 1.25 if max_y1 > 0 else 1
+
+    max_y2 = df_comb["Valor_por_Lead"].max() if not df_comb.empty else 0
+    ymax2 = max_y2 * 1.25 if max_y2 > 0 else 1
+
+    # Posición de la etiqueta de la línea (costo por lead): "bottom center"
+    # en vez de "top center" en los meses donde quedaría a una altura de
+    # píxel similar a la de la barra de gasto de ese mismo mes — evita que
+    # ambos números queden encimados e ilegibles.
+    meses = df_comb["Mes_Año"].tolist()
+    line_textposition = avoid_label_collision_positions(
+        categories=meses,
+        values=df_comb["Valor_por_Lead"].tolist(),
+        axis_max=ymax2,
+        reference_categories=meses,
+        reference_values=df_comb["Importe"].tolist(),
+        reference_axis_max=ymax1,
+    )
+
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
@@ -86,7 +109,7 @@ def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.Data
         marker=dict(color=px.colors.qualitative.Dark2[2], size=8),
         line=dict(width=3),
         text=[f"${v:,.2f}" if v > 0 else "" for v in df_comb["Valor_por_Lead"]],
-        textposition="top center",
+        textposition=line_textposition,
         yaxis="y2",
     ))
 
@@ -95,10 +118,11 @@ def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.Data
     fig.update_layout(
         template="plotly_white",
         xaxis=dict(title="Mes y Año", tickangle=-45),
-        yaxis=dict(title="Gasto total en pauta (USD)", side="left", showgrid=True, tickprefix="$", tickformat=",.0f"),
-        yaxis2=dict(title="Costo promedio por lead (USD)", overlaying="y", side="right", tickprefix="$", tickformat=",.0f"),
+        yaxis=dict(title="Gasto total en pauta (USD)", side="left", showgrid=True, tickprefix="$", tickformat=",.0f", range=[0, ymax1]),
+        yaxis2=dict(title="Costo promedio por lead (USD)", overlaying="y", side="right", tickprefix="$", tickformat=",.0f", range=[0, ymax2]),
         legend=dict(x=0.02, y=1.1, orientation="h"),
         bargap=0.25,
         margin=dict(t=80),
     )
+    fig.update_traces(cliponaxis=False)
     st.plotly_chart(fig, use_container_width=True)

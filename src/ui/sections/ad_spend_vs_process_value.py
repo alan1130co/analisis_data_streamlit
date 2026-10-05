@@ -99,13 +99,20 @@ def render_ad_spend_vs_process_value(gasto_raw: pd.DataFrame, df_clientify: pd.D
     ))
 
     fig.update_xaxes(type="category", categoryorder="array", categoryarray=orden_meses)
+
+    # Rango del eje Y con margen extra por encima de la barra más alta, para
+    # que la etiqueta de valor nunca quede recortada arriba.
+    max_y = max(data["Importe"].max(), data["Valor_Proceso_Pauta"].max()) if not data.empty else 0
+    ymax = max_y * 1.25 if max_y > 0 else 1
+
     fig.update_layout(
         template="plotly_white",
         barmode="group",
         xaxis=dict(title="Mes y Año", tickangle=-45),
-        yaxis=dict(title="Valor (USD)", tickprefix="$", tickformat=",.0f"),
+        yaxis=dict(title="Valor (USD)", tickprefix="$", tickformat=",.0f", range=[0, ymax]),
         legend=dict(x=0.02, y=1.1, orientation="h"),
         bargap=0.25,
         margin=dict(t=80),
     )
+    fig.update_traces(cliponaxis=False)
     st.plotly_chart(fig, use_container_width=True)

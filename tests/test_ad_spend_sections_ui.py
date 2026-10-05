@@ -158,29 +158,69 @@ def test_render_ad_spend_roas_selector_anio_mes_4_combinaciones_con_linea_roas_c
 
     todos_los_meses = ["Marzo 2025", "Abril 2025", "Marzo 2026"]
 
-    # 1. Año=Todos, Mes=Todos -> barras y línea muestran los 3 meses.
+    # 1. Año=Todos, Mes=Todos -> barras y línea muestran los 3 meses
+    #    (histórico completo, comportamiento confirmado, sin cambios).
     gasto_x, ing_x = bars_x()
     assert gasto_x == ing_x == todos_los_meses
     assert linea_roas_x() == todos_los_meses
 
-    # 2. Año=2025, Mes=Todos -> barras se reducen a 2025; línea sigue completa.
+    # 2. Año=2025, Mes=Todos -> barras Y línea se reducen a los meses de 2025
+    #    (fix 2026-10-05: antes la línea seguía trayendo "Marzo 2026" aunque
+    #    el usuario hubiera elegido Año=2025 — bug reportado por el usuario).
     at.selectbox[0].select("2025").run()
     gasto_x, ing_x = bars_x()
     assert gasto_x == ing_x == ["Marzo 2025", "Abril 2025"]
-    assert linea_roas_x() == todos_los_meses
+    assert linea_roas_x() == ["Marzo 2025", "Abril 2025"]
 
-    # 3. Año=Todos, Mes=Marzo -> barras: Marzo de ambos años; línea sigue completa.
+    # 3. Año=Todos, Mes=Marzo -> barras: Marzo de ambos años; línea sigue
+    #    completa (el filtro de Mes nunca restringe la línea, solo el Año).
     at.selectbox[0].select(TODOS).run()
     at.selectbox[1].select("Marzo").run()
     gasto_x, ing_x = bars_x()
     assert gasto_x == ing_x == ["Marzo 2025", "Marzo 2026"]
     assert linea_roas_x() == todos_los_meses
 
-    # 4. Año=2026 + Mes=Marzo -> barras: un único mes; línea sigue completa.
+    # 4. Año=2026 + Mes=Marzo -> barras: un único mes; línea recortada a los
+    #    meses de 2026 (acá solo hay uno en el fixture).
     at.selectbox[0].select("2026").run()
     gasto_x, ing_x = bars_x()
     assert gasto_x == ing_x == ["Marzo 2026"]
-    assert linea_roas_x() == todos_los_meses
+    assert linea_roas_x() == ["Marzo 2026"]
+
+
+def test_render_ad_spend_roas_anio_especifico_no_filtra_otros_anios_de_la_linea_roas():
+    """Regresión del bug reportado: elegir Año=2025 no debe dejar ver meses
+    de 2026 (ni de ningún otro año) en la línea de ROAS ni en el eje X,
+    aunque el selector de Mes siga en "Todos"."""
+    def app():
+        import pandas as pd
+        from src.ui.sections.ad_spend_roas import render_ad_spend_roas
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/01/2026", "Divisa": "USD", "Importe": "150"},
+            {"Fecha": "01/10/2026", "Divisa": "USD", "Importe": "300"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"creado": pd.Timestamp("2025-03-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "300"},
+        ])
+        render_ad_spend_roas(gasto_raw, df_clientify)
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    at.selectbox[0].select("2025").run()
+    traces = _plotly_traces(at)
+    linea_roas_x = list(traces[2]["x"])
+    assert linea_roas_x == ["Marzo 2025"]
+    assert "Enero 2026" not in linea_roas_x
+    assert "Octubre 2026" not in linea_roas_x
 
 
 def test_render_ad_spend_roas_eje_x_compacto_solo_cuando_anio_y_mes_son_especificos():
@@ -237,10 +277,11 @@ def test_render_ad_spend_roas_eje_x_compacto_solo_cuando_anio_y_mes_son_especifi
     at.selectbox[1].select("Marzo").run()
     assert _plotly_xaxis_range(at) is None
 
-    # 4. Año=2026 + Mes=Marzo -> rango de zoom sobre "Marzo 2026" (índice 2
-    # dentro del categoryarray completo ["Marzo 2025", "Abril 2025", "Marzo 2026"]).
+    # 4. Año=2026 + Mes=Marzo -> rango de zoom sobre "Marzo 2026" (índice 0
+    # dentro del categoryarray recortado a los meses de 2026, ["Marzo 2026"]
+    # — ya no el categoryarray completo de los 3 meses, ver fix 2026-10-05).
     at.selectbox[0].select("2026").run()
-    assert _plotly_xaxis_range(at) == [1.5, 2.5]
+    assert _plotly_xaxis_range(at) == [-0.5, 0.5]
 
 
 def test_render_ad_spend_total_roas_eje_x_compacto_solo_cuando_anio_y_mes_son_especificos():
@@ -280,6 +321,41 @@ def test_render_ad_spend_total_roas_eje_x_compacto_solo_cuando_anio_y_mes_son_es
 
     at.selectbox[0].select("2025").run()
     assert _plotly_xaxis_range(at) == [-0.5, 0.5]  # "Marzo 2025" es índice 0
+
+
+def test_render_ad_spend_total_roas_anio_especifico_no_filtra_otros_anios_de_la_linea_roas():
+    """Mismo patrón de selector Año/Mes que `ad_spend_roas.py` — misma
+    regresión: elegir un Año puntual no debe dejar ver meses de otros años
+    en la línea de ROAS ni en el eje X."""
+    def app():
+        import pandas as pd
+        from src.ui.sections.ad_spend_total_roas import render_ad_spend_total_roas
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/01/2026", "Divisa": "USD", "Importe": "150"},
+            {"Fecha": "01/10/2026", "Divisa": "USD", "Importe": "300"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"creado": pd.Timestamp("2025-03-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "300"},
+        ])
+        render_ad_spend_total_roas(gasto_raw, df_clientify)
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    at.selectbox[0].select("2025").run()
+    traces = _plotly_traces(at)
+    linea_roas_x = list(traces[2]["x"])
+    assert linea_roas_x == ["Marzo 2025"]
+    assert "Enero 2026" not in linea_roas_x
+    assert "Octubre 2026" not in linea_roas_x
 
 
 def test_render_ad_spend_vs_closures_selector_anio_mes_default_y_filtro_puntual():
@@ -463,3 +539,444 @@ def test_render_ad_spend_vs_process_value_selector_anio_mes_default_y_filtro_pun
     at.selectbox[1].select("Marzo").run()
     traces = _plotly_traces(at)
     assert list(traces[0]["x"]) == ["Marzo 2026"]
+
+
+def _df_clientify_process_value_roas_fixture():
+    import pandas as pd
+
+    return pd.DataFrame([
+        {"creado": pd.Timestamp("2025-03-01"), "estado": "activo",
+         "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+         "canal online": "paid social",
+         "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+         "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+         "Valor total del proceso": "3000"},
+        {"creado": pd.Timestamp("2025-04-01"), "estado": "activo",
+         "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+         "canal online": "paid social",
+         "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+         "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+         "Valor total del proceso": "4000"},
+        {"creado": pd.Timestamp("2026-03-01"), "estado": "activo",
+         "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+         "canal online": "paid social",
+         "Fecha de cierre": pd.Timestamp("2026-03-05"), "Fecha de segundo cierre": None,
+         "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+         "Valor total del proceso": "5000"},
+        {"creado": pd.Timestamp("2025-05-01"), "estado": "activo",
+         "Canal offline": "referido puro", "Origen de la pauta": None,
+         "canal online": None,
+         "Fecha de cierre": pd.Timestamp("2025-05-05"), "Fecha de segundo cierre": None,
+         "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+         "Valor total del proceso": "9999"},  # Referido puro: NO debe sumar.
+    ])
+
+
+def test_render_ad_spend_vs_process_value_roas_selector_anio_mes_4_combinaciones_con_linea_roas():
+    def app():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas
+        from tests.test_ad_spend_sections_ui import _df_clientify_process_value_roas_fixture
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+            {"Fecha": "01/03/2026", "Divisa": "USD", "Importe": "300"},
+        ])
+        render_ad_spend_vs_process_value_roas(gasto_raw, _df_clientify_process_value_roas_fixture())
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    anio_sb, mes_sb = at.selectbox[0], at.selectbox[1]
+    assert anio_sb.options == [TODOS, "2025", "2026"]
+    assert mes_sb.options == [TODOS] + list(MESES_ES.values())
+    assert anio_sb.value == TODOS
+    assert mes_sb.value == TODOS
+
+    def bars_x():
+        traces = _plotly_traces(at)
+        return list(traces[0]["x"]), list(traces[1]["x"])
+
+    def linea_roas_x():
+        return list(_plotly_traces(at)[2]["x"])
+
+    todos_los_meses = ["Marzo 2025", "Abril 2025", "Marzo 2026"]
+
+    # 1. Año=Todos, Mes=Todos -> barras y línea muestran los 3 meses.
+    gasto_x, ing_x = bars_x()
+    assert gasto_x == ing_x == todos_los_meses
+    assert linea_roas_x() == todos_los_meses
+
+    # 2. Año=2025, Mes=Todos -> barras Y línea se recortan a 2025 (sin dejar
+    # ver "Marzo 2026" — ver fix del bug de los selectores de ROAS).
+    at.selectbox[0].select("2025").run()
+    gasto_x, ing_x = bars_x()
+    assert gasto_x == ing_x == ["Marzo 2025", "Abril 2025"]
+    assert linea_roas_x() == ["Marzo 2025", "Abril 2025"]
+
+    # 3. Año=Todos, Mes=Marzo -> barras: Marzo de ambos años; línea completa.
+    at.selectbox[0].select(TODOS).run()
+    at.selectbox[1].select("Marzo").run()
+    gasto_x, ing_x = bars_x()
+    assert gasto_x == ing_x == ["Marzo 2025", "Marzo 2026"]
+    assert linea_roas_x() == todos_los_meses
+
+    # 4. Año=2026 + Mes=Marzo -> barras: un único mes; línea recortada a 2026.
+    at.selectbox[0].select("2026").run()
+    gasto_x, ing_x = bars_x()
+    assert gasto_x == ing_x == ["Marzo 2026"]
+    assert linea_roas_x() == ["Marzo 2026"]
+
+
+def test_render_ad_spend_vs_process_value_roas_usa_valor_total_del_proceso_de_cierres_de_pauta():
+    """El ingreso debe tener el MISMO alcance que "Gasto en pauta vs Valor
+    Total del Proceso (cierres de redes)": solo cierres de Pauta, el
+    "Referido puro" queda excluido (lo verifica el valor de la barra de
+    ingreso de Marzo 2025: 3000, NO 3000+9999)."""
+    def app():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas
+        from tests.test_ad_spend_sections_ui import _df_clientify_process_value_roas_fixture
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+        ])
+        render_ad_spend_vs_process_value_roas(gasto_raw, _df_clientify_process_value_roas_fixture())
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    at.selectbox[1].select("Marzo").run()
+    at.selectbox[0].select("2025").run()
+    traces = _plotly_traces(at)
+    # Los valores numéricos vienen serializados en binario (dtype/bdata) en
+    # las versiones recientes de Plotly — se comparan vía el texto de la
+    # etiqueta (siempre una lista plana de strings) en vez de "y".
+    assert list(traces[1]["text"]) == ["$3,000"]
+    # Línea de ROAS: recortada a los meses de 2025 (Marzo + Abril, ver fix
+    # del bug de los selectores) — en Marzo 2025, ROAS = 3000 / 100 = 30x.
+    roas_x = list(traces[2]["x"])
+    roas_text = list(traces[2]["text"])
+    assert roas_text[roas_x.index("Marzo 2025")] == "30.00x"
+
+
+def test_render_ad_spend_vs_process_value_roas_yaxis_range_deja_margen_para_etiquetas():
+    """Mismo patrón de margen de eje Y que `ad_spend_roas.py` (task 2: las
+    etiquetas de valor no deben recortarse cuando la barra es alta)."""
+    def app():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas
+        from tests.test_ad_spend_sections_ui import _df_clientify_process_value_roas_fixture
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+        ])
+        render_ad_spend_vs_process_value_roas(gasto_raw, _df_clientify_process_value_roas_fixture())
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    # Acota a un único mes (Marzo 2025) para que el máximo de las barras sea
+    # determinístico: Importe=100, Valor_Proceso_Pauta=3000.
+    at.selectbox[1].select("Marzo").run()
+    at.selectbox[0].select("2025").run()
+
+    chart = at.get("plotly_chart")[0]
+    spec = json.loads(chart.proto.spec)
+    y_range = spec["layout"]["yaxis"]["range"]
+    max_bar_value = 3000.0
+    assert y_range[1] > max_bar_value
+    assert y_range[1] == max_bar_value * 1.25
+    for trace in spec["data"]:
+        if trace.get("type") == "bar":
+            assert trace.get("cliponaxis") is False
+
+
+def test_bar_charts_yaxis_range_deja_margen_para_que_el_valor_no_se_recorte():
+    """Task 2: en barras muy altas, la etiqueta de valor ("$6,711.82") no
+    debe recortarse arriba — todas las gráficas de barras de "Marketing e
+    Inversión" deben reservar margen extra en el eje Y por encima del valor
+    máximo (y no recortar el texto con `cliponaxis`)."""
+    casos = []
+
+    def app_ad_spend():
+        from src.ui.sections.ad_spend import render_ad_spend
+        from tests.test_ad_spend_sections_ui import _FakeUploadedFile
+        csv = b"Fecha,Divisa,Importe\n01/03/2025,USD,6711.82\n"
+        render_ad_spend([_FakeUploadedFile("billing.csv", csv)])
+
+    casos.append(("ad_spend", app_ad_spend, 6711.82))
+
+    def app_vs_revenue():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_revenue import render_ad_spend_vs_revenue
+        gasto_raw = pd.DataFrame([{"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"}])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": "6711.82"},
+        ])
+        render_ad_spend_vs_revenue(gasto_raw, df_clientify)
+
+    casos.append(("ad_spend_vs_revenue", app_vs_revenue, 6711.82))
+
+    def app_cost_per_lead():
+        import pandas as pd
+        from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
+        gasto_raw = pd.DataFrame([{"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "6711.82"}])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None},
+        ])
+        render_ad_spend_cost_per_lead(gasto_raw, df_clientify)
+
+    casos.append(("ad_spend_cost_per_lead", app_cost_per_lead, 6711.82))
+
+    def app_vs_closures():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_closures import render_ad_spend_vs_closures
+        gasto_raw = pd.DataFrame([{"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "6711.82"}])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None},
+        ])
+        render_ad_spend_vs_closures(gasto_raw, df_clientify)
+
+    casos.append(("ad_spend_vs_closures", app_vs_closures, 6711.82))
+
+    def app_vs_process_value():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_process_value import render_ad_spend_vs_process_value
+        gasto_raw = pd.DataFrame([{"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"}])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": "6711.82"},
+        ])
+        render_ad_spend_vs_process_value(gasto_raw, df_clientify)
+
+    casos.append(("ad_spend_vs_process_value", app_vs_process_value, 6711.82))
+
+    for nombre, app_fn, max_value in casos:
+        at = AppTest.from_function(app_fn)
+        at.run()
+        assert not at.exception, f"{nombre}: {at.exception}"
+
+        chart = at.get("plotly_chart")[0]
+        spec = json.loads(chart.proto.spec)
+        bar_traces = [t for t in spec["data"] if t.get("type") == "bar"]
+        assert bar_traces, f"{nombre}: no se encontraron trazas de barras"
+        for trace in bar_traces:
+            assert trace.get("cliponaxis") is False, f"{nombre}: cliponaxis debe ser False"
+
+        # yaxis primario (el que trae las barras) debe tener rango con
+        # margen por encima del valor máximo graficado.
+        yaxis = spec["layout"]["yaxis"]
+        assert "range" in yaxis, f"{nombre}: falta 'range' en el eje Y"
+        assert yaxis["range"][1] > max_value, f"{nombre}: el rango no deja margen sobre el valor máximo"
+
+
+def test_render_ad_spend_cost_per_lead_evita_colision_entre_etiqueta_de_barra_y_de_linea():
+    """Regresión del bug reportado: en "Gasto en pauta vs. Costo promedio
+    por lead de redes", cuando el punto de la línea cae a una altura de
+    píxel similar a la de la barra de ese mismo mes, las 2 etiquetas de
+    texto quedaban encimadas e ilegibles (ej. "$7,656.03" sobre "$390.67").
+
+    Fixture con 2 meses diseñados para que las fracciones normalizadas
+    (valor / máximo de su propio eje) coincidan exactamente en Marzo
+    (0.8 == 0.8 -> colisión) y difieran de sobra en Abril (0.8 vs 0.1 -> sin
+    colisión): Importe=800 ambos meses (bar_frac=0.8 fijo); Valor_por_Lead
+    Marzo=800/2=400 (line_frac=400/500=0.8, colisiona) y Abril=800/16=50
+    (line_frac=50/500=0.1, no colisiona)."""
+    def app():
+        import pandas as pd
+        from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "800"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "800"},
+        ])
+
+        filas = []
+        for _ in range(2):  # Marzo: 2 cierres -> Valor_por_Lead = 800/2 = 400
+            filas.append({
+                "estado": "activo", "Canal offline": "Clientify - Facebook",
+                "Origen de la pauta": "Facebook", "canal online": "paid social",
+                "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+                "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+            })
+        for _ in range(16):  # Abril: 16 cierres -> Valor_por_Lead = 800/16 = 50
+            filas.append({
+                "estado": "activo", "Canal offline": "Clientify - Facebook",
+                "Origen de la pauta": "Facebook", "canal online": "paid social",
+                "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+                "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+            })
+        df_clientify = pd.DataFrame(filas)
+        render_ad_spend_cost_per_lead(gasto_raw, df_clientify)
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    traces = _plotly_traces(at)
+    bar_trace, line_trace = traces[0], traces[1]
+    assert list(bar_trace["x"]) == ["Marzo 2025", "Abril 2025"]
+    assert bar_trace["textposition"] == "outside"
+
+    # La línea YA NO usa una única posición fija para todos los puntos.
+    assert list(line_trace["x"]) == ["Marzo 2025", "Abril 2025"]
+    assert line_trace["textposition"] == ["bottom center", "top center"]
+
+
+def test_bar_y_linea_textposition_configuradas_de_forma_distinta_en_todas_las_graficas_de_marketing():
+    """Consistencia entre las 5 gráficas de barras+línea de "Marketing e
+    Inversión": la traza de la línea debe traer un `textposition` por punto
+    (lista), NUNCA una única cadena fija ("top center") igual para todos los
+    meses — es lo que permite separarla de la etiqueta de la barra cuando
+    quedan a una altura similar. La traza de barra(s) se mantiene en
+    "outside" en todos los casos (sin cambios)."""
+    def app_cost_per_lead():
+        import pandas as pd
+        from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "800"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None},
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None},
+        ])
+        render_ad_spend_cost_per_lead(gasto_raw, df_clientify)
+
+    def app_vs_closures():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_closures import render_ad_spend_vs_closures
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "800"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None},
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None},
+        ])
+        render_ad_spend_vs_closures(gasto_raw, df_clientify)
+
+    def app_roas():
+        import pandas as pd
+        from src.ui.sections.ad_spend_roas import render_ad_spend_roas
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "300"},
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "400"},
+        ])
+        render_ad_spend_roas(gasto_raw, df_clientify)
+
+    def app_total_roas():
+        import pandas as pd
+        from src.ui.sections.ad_spend_total_roas import render_ad_spend_total_roas
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "300"},
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Cuota inicial pactada": "400"},
+        ])
+        render_ad_spend_total_roas(gasto_raw, df_clientify)
+
+    def app_vs_process_value_roas():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas
+        gasto_raw = pd.DataFrame([
+            {"Fecha": "01/03/2025", "Divisa": "USD", "Importe": "100"},
+            {"Fecha": "01/04/2025", "Divisa": "USD", "Importe": "200"},
+        ])
+        df_clientify = pd.DataFrame([
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-03-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": "3000"},
+            {"estado": "activo", "Canal offline": "Clientify - Facebook",
+             "Origen de la pauta": "Facebook", "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp("2025-04-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": "4000"},
+        ])
+        render_ad_spend_vs_process_value_roas(gasto_raw, df_clientify)
+
+    casos = [
+        ("ad_spend_cost_per_lead", app_cost_per_lead),
+        ("ad_spend_vs_closures", app_vs_closures),
+        ("ad_spend_roas", app_roas),
+        ("ad_spend_total_roas", app_total_roas),
+        ("ad_spend_vs_process_value_roas", app_vs_process_value_roas),
+    ]
+
+    for nombre, app_fn in casos:
+        at = AppTest.from_function(app_fn)
+        at.run()
+        assert not at.exception, f"{nombre}: {at.exception}"
+
+        traces = _plotly_traces(at)
+        bar_traces = [t for t in traces if t.get("type") == "bar"]
+        line_traces = [t for t in traces if t.get("type") == "scatter"]
+        assert bar_traces and line_traces, f"{nombre}: faltan trazas de barra o línea"
+
+        for bar in bar_traces:
+            assert bar["textposition"] == "outside", f"{nombre}: la barra debe seguir en 'outside'"
+
+        for line in line_traces:
+            textposition = line["textposition"]
+            # Debe ser un arreglo por punto (uno por mes), no una única
+            # cadena fija compartida por todos los puntos de la traza.
+            assert isinstance(textposition, list), (
+                f"{nombre}: la línea debe traer un textposition por punto, "
+                f"no una cadena fija — se encontró {textposition!r}"
+            )
+            assert len(textposition) == len(line["x"])
+            assert set(textposition) <= {"top center", "bottom center"}

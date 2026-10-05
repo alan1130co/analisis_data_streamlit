@@ -95,17 +95,22 @@ def render_ad_spend_vs_revenue(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
     fig.update_traces(
         texttemplate="$%{text:,.2f}",
         textposition="outside",
+        cliponaxis=False,
     )
+
+    # Rango del eje Y con margen extra por encima de la barra más alta, para
+    # que la etiqueta de valor nunca quede recortada arriba.
+    max_y = data["Valor"].max() if not data.empty else 0
+    ymax = max_y * 1.25 if max_y > 0 else 1
 
     fig.update_layout(
         template="plotly_white",
         xaxis_title="Mes y Año",
-        yaxis_title="Valor (USD)",
         xaxis_tickangle=-45,
         bargap=0.25,
         legend_title_text="Concepto",
-        yaxis=dict(tickprefix="$", tickformat=",.0f"),
+        yaxis=dict(title="Valor (USD)", tickprefix="$", tickformat=",.0f", range=[0, ymax]),
         showlegend=True,
-        margin=dict(t=40),
+        margin=dict(t=80),
     )
     st.plotly_chart(fig, use_container_width=True)

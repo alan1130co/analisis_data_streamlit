@@ -71,6 +71,7 @@ _ROAS_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Importe", "Ingreso_CuotaInicial
 _TOTAL_ROAS_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Gasto_Total", "Ingreso_CuotaInicial", "ROAS"]
 _PROCESS_VALUE_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Valor_Proceso_Pauta"]
 _PAUTA_VS_PROCESS_VALUE_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Importe", "Valor_Proceso_Pauta"]
+_PROCESS_VALUE_ROAS_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Importe", "Valor_Proceso_Pauta", "ROAS"]
 
 
 def closures_from_redes_monthly(df: pd.DataFrame, channels: set[str] | None = None) -> pd.DataFrame:
@@ -786,3 +787,59 @@ def combine_ad_spend_and_pauta_process_value(
     combined["Valor_Proceso_Pauta"] = combined["Valor_Proceso_Pauta"].fillna(0.0)
     combined = combined.sort_values(["Año", "Mes_num"])
     return combined[_PAUTA_VS_PROCESS_VALUE_COLUMNS].reset_index(drop=True)
+
+
+def combine_ad_spend_process_value_and_roas(
+    gasto_mensual: pd.DataFrame,
+    valor_mensual: pd.DataFrame,
+    since_year: int = 2025,
+    since_month: int = 1,
+) -> pd.DataFrame:
+    """Como `combine_ad_spend_revenue_and_roas`, pero el ingreso es el "Valor
+    total del proceso" de cierres de Pauta (`calculate_pauta_process_value_
+    chart`, la MISMA función que alimenta "Gasto en pauta vs Valor Total del
+    Proceso (cierres de redes)" en `ad_spend_vs_process_value.py`) en vez de
+    la cuota inicial — así esta gráfica de ROAS y esa gráfica de barras nunca
+    desacuerdan sobre qué cuenta como ingreso de Pauta por mes.
+
+    Outer join, mismo criterio que `combine_ad_spend_revenue_and_roas`: un
+    mes con gasto pero sin cierres de Pauta, o con cierres pero sin gasto
+    registrado, se conserva igual (0.0 en el lado faltante). Filtra
+    estrictamente desde `since_year`/`since_month` en adelante (por defecto
+    enero 2025).
+
+    'ROAS' = Valor_Proceso_Pauta / Importe; 0.0 cuando el gasto del mes es 0
+    (para no dividir por cero), igual que las demás funciones de ROAS de
+    este archivo.
+
+    Columnas devueltas: "Año", "Mes_num", "Mes_Año", "Importe",
+    "Valor_Proceso_Pauta", "ROAS".
+    """
+    empty = pd.DataFrame(columns=_PROCESS_VALUE_ROAS_COLUMNS)
+    if gasto_mensual.empty and valor_mensual.empty:
+        return empty
+
+    gasto = gasto_mensual if not gasto_mensual.empty else pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Importe"])
+    valor = (
+        valor_mensual
+        if not valor_mensual.empty
+        else pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Valor_Proceso_Pauta"])
+    )
+
+    combined = pd.merge(gasto, valor, on=["Año", "Mes_num", "Mes_Año"], how="outer")
+    combined["Importe"] = combined["Importe"].fillna(0.0)
+    combined["Valor_Proceso_Pauta"] = combined["Valor_Proceso_Pauta"].fillna(0.0)
+
+    combined = combined[
+        (combined["Año"] > since_year)
+        | ((combined["Año"] == since_year) & (combined["Mes_num"] >= since_month))
+    ].copy()
+    if combined.empty:
+        return empty
+
+    combined = combined.sort_values(["Año", "Mes_num"])
+    combined["ROAS"] = combined.apply(
+        lambda r: (r["Valor_Proceso_Pauta"] / r["Importe"]) if r["Importe"] > 0 else 0.0,
+        axis=1,
+    )
+    return combined[_PROCESS_VALUE_ROAS_COLUMNS].reset_index(drop=True)

@@ -11,6 +11,7 @@ from src.analytics.ad_spend_vs_closures import (
     combine_ad_spend_and_cost_per_lead,
     combine_ad_spend_and_pauta_process_value,
     combine_ad_spend_and_revenue,
+    combine_ad_spend_process_value_and_roas,
     combine_ad_spend_revenue_and_roas,
     combine_ad_spend_total_revenue_and_roas,
     revenue_cuota_inicial_from_redes_monthly,
@@ -678,6 +679,76 @@ def test_combine_ad_spend_and_pauta_process_value_outer_join_sin_recorte_tempora
 def test_combine_ad_spend_and_pauta_process_value_ambos_vacios():
     out = combine_ad_spend_and_pauta_process_value(pd.DataFrame(), pd.DataFrame())
     assert out.empty
+
+
+def test_combine_ad_spend_process_value_and_roas_calcula_roas_por_mes():
+    gasto = pd.DataFrame([
+        {"Año": 2025, "Mes_num": 1, "Mes_Año": "Enero 2025", "Importe": 100.0},
+        {"Año": 2025, "Mes_num": 2, "Mes_Año": "Febrero 2025", "Importe": 200.0},
+    ])
+    valor = pd.DataFrame([
+        {"Año": 2025, "Mes_num": 1, "Mes_Año": "Enero 2025", "Valor_Proceso_Pauta": 600.0},
+    ])
+    out = combine_ad_spend_process_value_and_roas(gasto, valor)
+    assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe", "Valor_Proceso_Pauta", "ROAS"]
+
+    enero = out[out["Mes_Año"] == "Enero 2025"].iloc[0]
+    assert enero["ROAS"] == 6.0
+
+    febrero = out[out["Mes_Año"] == "Febrero 2025"].iloc[0]
+    assert febrero["Valor_Proceso_Pauta"] == 0.0
+    assert febrero["ROAS"] == 0.0
+
+
+def test_combine_ad_spend_process_value_and_roas_gasto_cero_no_divide_por_cero():
+    gasto = pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Importe"])
+    valor = pd.DataFrame([
+        {"Año": 2025, "Mes_num": 3, "Mes_Año": "Marzo 2025", "Valor_Proceso_Pauta": 500.0},
+    ])
+    out = combine_ad_spend_process_value_and_roas(gasto, valor)
+    assert out["Importe"].iloc[0] == 0.0
+    assert out["ROAS"].iloc[0] == 0.0
+
+
+def test_combine_ad_spend_process_value_and_roas_filtra_desde_enero_2025():
+    gasto = pd.DataFrame([
+        {"Año": 2024, "Mes_num": 12, "Mes_Año": "Diciembre 2024", "Importe": 999.0},
+        {"Año": 2025, "Mes_num": 1, "Mes_Año": "Enero 2025", "Importe": 100.0},
+    ])
+    out = combine_ad_spend_process_value_and_roas(gasto, pd.DataFrame())
+    assert "Diciembre 2024" not in out["Mes_Año"].values
+
+
+def test_combine_ad_spend_process_value_and_roas_ambos_vacios():
+    out = combine_ad_spend_process_value_and_roas(pd.DataFrame(), pd.DataFrame())
+    assert out.empty
+    assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe", "Valor_Proceso_Pauta", "ROAS"]
+
+
+def test_combine_ad_spend_process_value_and_roas_reutiliza_calculate_pauta_process_value_chart():
+    """El ingreso de esta gráfica debe tener el MISMO alcance que "Gasto en
+    pauta vs Valor Total del Proceso (cierres de redes)"
+    (`ad_spend_vs_process_value.py`): solo cierres de Pauta
+    (`calculate_pauta_process_value_chart`), no todos los cierres del mes —
+    el "Referido puro" queda excluido."""
+    df = pd.DataFrame([
+        {"estado": "activo", "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+         "canal online": "paid social", "Fecha de cierre": pd.Timestamp("2025-03-05"),
+         "Fecha de segundo cierre": None, "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+         "Valor total del proceso": "5000"},
+        {"estado": "activo", "Canal offline": "referido puro", "Origen de la pauta": None,
+         "canal online": None, "Fecha de cierre": pd.Timestamp("2025-03-06"),
+         "Fecha de segundo cierre": None, "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+         "Valor total del proceso": "9000"},  # Referido puro: NO debe sumar.
+    ])
+    valor_mensual = calculate_pauta_process_value_chart(df)
+    gasto = pd.DataFrame([
+        {"Año": 2025, "Mes_num": 3, "Mes_Año": "Marzo 2025", "Importe": 1000.0},
+    ])
+    out = combine_ad_spend_process_value_and_roas(gasto, valor_mensual)
+    marzo = out[out["Mes_Año"] == "Marzo 2025"].iloc[0]
+    assert marzo["Valor_Proceso_Pauta"] == 5000.0
+    assert marzo["ROAS"] == 5.0
 
 
 def test_calculate_redes_revenue_chart_no_afecta_revenue_from_redes_monthly():
