@@ -61,11 +61,9 @@ def render_ad_spend(uploaded_files) -> None:
     sumar dos veces un cobro si los rangos de fecha de los archivos se
     solapan (ver `load_ad_spend_files`).
 
-    2 selectores independientes: "Año" (`key="anio_ad_spend"`) y "Mes"
-    (`key="mes_ad_spend"`), ambos con default "Todos" — con ambos en
-    "Todos" se ve la tendencia completa. Año+Mes específicos combinan con
-    AND (ver `ad_spend.filter_by_anio_mes`, compartida por las 6 gráficas
-    de esta pestaña).
+    Fuente CSV únicamente — para la fuente API de Meta ver
+    `render_ad_spend_from_raw`, que recibe el DataFrame ya cargado en vez de
+    una lista de archivos subidos.
     """
     st.markdown("### 💰 Gasto en pauta publicitaria (Meta Ads)")
 
@@ -82,11 +80,34 @@ def render_ad_spend(uploaded_files) -> None:
         st.warning("No se pudo leer ningún archivo de facturación válido.")
         return
 
+    _render_chart(raw)
+
+
+def render_ad_spend_from_raw(raw: pd.DataFrame) -> None:
+    """Misma gráfica que `render_ad_spend`, para la fuente API de Meta
+    (gasto real diario ya agregado por `src/data_sources/meta_ads_api.py`)
+    — recibe el DataFrame directo, sin pasar por `load_ad_spend_files`."""
+    st.markdown("### 💰 Gasto en pauta publicitaria (Meta Ads)")
+
+    if raw is None or raw.empty:
+        st.info("No hay gasto registrado en la API de Meta para el rango consultado.")
+        return
+
+    _render_chart(raw)
+
+
+def _render_chart(raw: pd.DataFrame) -> None:
+    """Cuerpo compartido por `render_ad_spend` (CSV) y
+    `render_ad_spend_from_raw` (API). 2 selectores independientes: "Año"
+    (`key="anio_ad_spend"`) y "Mes" (`key="mes_ad_spend"`), ambos con
+    default "Todos" — con ambos en "Todos" se ve la tendencia completa.
+    Año+Mes específicos combinan con AND (ver `ad_spend.filter_by_anio_mes`,
+    compartida por las 6 gráficas de esta pestaña)."""
     data = monthly_ad_spend(raw)
     if data.empty:
         st.warning(
-            "Los archivos se cargaron pero no se encontraron filas válidas en "
-            "USD con columnas 'Fecha', 'Divisa' e 'Importe'."
+            "No se encontraron filas válidas en USD con columnas 'Fecha', "
+            "'Divisa' e 'Importe'."
         )
         return
 

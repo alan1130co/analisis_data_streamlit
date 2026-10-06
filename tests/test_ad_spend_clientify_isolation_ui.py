@@ -56,7 +56,7 @@ _AD_SPEND_CSV = (
 
 
 def _app():
-    from src.ui import api_source
+    from src.ui import api_source, meta_ads_source
     from tests.test_ad_spend_clientify_isolation_ui import _fake_client_calls, _cache_cleared, _fake_api_contact_df
 
     class _FakeClient:
@@ -72,6 +72,13 @@ def _app():
     if not _cache_cleared["done"]:
         api_source._load_and_prepare_from_api.clear()
         _cache_cleared["done"] = True
+
+    # Fuente de gasto en pauta de Meta: este test sube un CSV directo al
+    # uploader de Meta Ads (ver más abajo) — se fuerza a CSV (sin
+    # credenciales) para que ese uploader exista y quede en el índice 0
+    # independientemente de si hay un META_ACCESS_TOKEN real configurado en
+    # el secrets.toml local de quien corra la suite.
+    meta_ads_source.META_ACCESS_TOKEN = ""
 
     import src.auth as auth
     auth.check_password = lambda: True
@@ -94,7 +101,7 @@ def test_cambiar_selector_de_gasto_en_pauta_no_refetchea_clientify():
 
     # Subir el archivo de Meta Ads y elegir la fuente API.
     at.get("file_uploader")[0].upload("meta_ads.csv", _AD_SPEND_CSV, "text/csv").run(timeout=30)
-    at.radio[0].set_value("Conectar con Clientify API").run(timeout=30)
+    at.radio(key="data_source_selector").set_value("Conectar con Clientify API").run(timeout=30)
 
     assert not at.exception
     assert _fake_client_calls["count"] == 1, (

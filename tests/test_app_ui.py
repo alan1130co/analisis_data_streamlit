@@ -66,7 +66,7 @@ def _build_app_with_fake_api_client():
     def app():
         import pandas as pd
         from tests.test_app_ui import _full_schema_fake_api_df
-        from src.ui import api_source
+        from src.ui import api_source, meta_ads_source
         from src.ui.data_source_selector import API_OPTION
 
         class _FakeClient:
@@ -80,6 +80,12 @@ def _build_app_with_fake_api_client():
         api_source.CLIENTIFY_API_TOKEN = "fake-token-para-test-app-ui"
         api_source._load_and_prepare_from_api.clear()
 
+        # Fuente de gasto en pauta de Meta: sin estas pruebas, no tiene nada
+        # que ver con Clientify — se fuerza a CSV (sin credenciales) para
+        # que no dispare un fetch real a la API de Meta Ads según lo que
+        # haya en el secrets.toml local de quien corra la suite.
+        meta_ads_source.META_ACCESS_TOKEN = ""
+
         import src.auth as auth
         auth.check_password = lambda: True
 
@@ -91,6 +97,9 @@ def _build_app_with_fake_api_client():
 
 def _no_source_app():
     def app():
+        from src.ui import meta_ads_source
+        meta_ads_source.META_ACCESS_TOKEN = ""
+
         import src.auth as auth
         auth.check_password = lambda: True
 
@@ -127,7 +136,7 @@ def test_segmentacion_clave_no_reporta_columnas_faltantes_con_fuente_api():
     mostrar "La columna 'X' no existe en los datos cargados"."""
     at = _build_app_with_fake_api_client()
     at.run(timeout=30)
-    at.radio[0].set_value("Conectar con Clientify API").run(timeout=30)
+    at.radio(key="data_source_selector").set_value("Conectar con Clientify API").run(timeout=30)
 
     assert not at.exception
 

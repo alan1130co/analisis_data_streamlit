@@ -12,6 +12,8 @@ from src.auth import check_password
 from src.utils.sync_timing import log_marker, timed_stage
 from src.config.settings import APP_TITLE
 from src.ui.data_source_selector import render_data_source_selector
+from src.ui.meta_ads_source import CSV_OPTION as META_CSV_OPTION
+from src.ui.meta_ads_source import render_meta_ads_source
 from src.ui.kpi_cards import render_kpi_cards
 from src.ui.styles import inject_custom_css
 from src.analytics.metrics import compute_all_metrics, is_marketing
@@ -42,7 +44,7 @@ from src.ui.sections.closures_by_publication import render_closures_by_publicati
 from src.ui.sections.closures_by_gender import render_closures_by_gender
 from src.ui.sections.closures_vs_second_closures import render_closures_vs_second_closures
 from src.ui.sections.closures_by_channel_over_time import render_closures_by_channel_over_time
-from src.ui.sections.ad_spend import load_ad_spend_files, render_ad_spend
+from src.ui.sections.ad_spend import render_ad_spend, render_ad_spend_from_raw
 from src.ui.sections.ad_spend_vs_closures import render_ad_spend_vs_closures
 from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
 from src.ui.sections.ad_spend_vs_revenue import render_ad_spend_vs_revenue
@@ -81,19 +83,8 @@ def main():
     # Ads y la gráfica "Gasto en pauta" (que no necesitan ni un contacto de
     # Clientify) se quedaban congelados detrás del spinner de sync.
     with st.sidebar:
-        st.markdown("### 💰 Facturación / Inversión (Meta Ads)")
-        meta_billing_files = st.file_uploader(
-            "Cargar reportes de Facturación/Inversión (Meta Ads)",
-            type=["csv", "xls", "xlsx"],
-            key="meta_billing_uploader",
-            accept_multiple_files=True,
-            help=(
-                "Podés cargar varios archivos a la vez: el histórico de "
-                "facturación y los reportes nuevos de cada cuenta "
-                "(columnas Fecha, Divisa, Importe)."
-            ),
-        )
-        st.session_state.meta_billing_files = meta_billing_files
+        with timed_stage("render_meta_ads_source (Meta Ads, CSV o API)"):
+            gasto_raw, meta_billing_files, meta_source = render_meta_ads_source()
         st.markdown("---")
 
     st.markdown("---")
@@ -106,16 +97,17 @@ def main():
     ])
 
     # Esta parte de TAB 1 (gráfica "Gasto en pauta publicitaria") usa
-    # ÚNICAMENTE los archivos de Meta Ads ya subidos — se renderiza YA, sin
-    # esperar a que la fuente de contactos (elegida más abajo) termine de
-    # cargar. Las otras 6 gráficas de esta pestaña SÍ cruzan gasto con
-    # leads/cierres de Clientify (reciben `df_clientify` — confirmado en
-    # cada una de sus firmas), así que esas quedan más abajo, después de que
-    # `df_unfiltered` exista.
-    with timed_stage("load_ad_spend_files (Meta Ads)"):
-        gasto_raw = load_ad_spend_files(meta_billing_files)
+    # ÚNICAMENTE `gasto_raw` (ya cargado arriba, sea por CSV o por la API de
+    # Meta) — se renderiza YA, sin esperar a que la fuente de contactos
+    # (elegida más abajo) termine de cargar. Las otras 6 gráficas de esta
+    # pestaña SÍ cruzan gasto con leads/cierres de Clientify (reciben
+    # `df_clientify` — confirmado en cada una de sus firmas), así que esas
+    # quedan más abajo, después de que `df_unfiltered` exista.
     with tab1:
-        render_ad_spend(meta_billing_files)
+        if meta_source == META_CSV_OPTION:
+            render_ad_spend(meta_billing_files)
+        else:
+            render_ad_spend_from_raw(gasto_raw)
 
     # --- Fuente de contactos de Clientify (Excel o API): puede bloquear el
     # script varios minutos si dispara un sync completo contra la API real.

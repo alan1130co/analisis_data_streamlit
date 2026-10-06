@@ -31,6 +31,7 @@ def render_data_source_selector() -> tuple[pd.DataFrame | None, str | None]:
         "¿De dónde cargar los datos?",
         options=[EXCEL_OPTION, API_OPTION],
         index=0,
+        key="data_source_selector",
     )
 
     if source == EXCEL_OPTION:

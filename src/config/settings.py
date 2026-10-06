@@ -39,6 +39,22 @@ APP_TIMEZONE: str = os.getenv("APP_TIMEZONE", "America/Bogota")
 CLIENTIFY_API_TOKEN: str = _get_secret("CLIENTIFY_API_TOKEN", "")
 CLIENTIFY_BASE_URL: str = _get_secret("CLIENTIFY_BASE_URL", "https://api.clientify.net/v1")
 
+# --- Meta Ads (Marketing API) — diagnóstico 2026-10-06, ver scripts/diagnostic_meta_api.py.
+# Fuente de gasto elegida: Insights API (gasto real diario), NO el endpoint de
+# /transactions (facturación) — Meta solo factura al llegar a un umbral
+# (~$900), así que gasto real ya incurrido pero no facturado quedaría
+# invisible si se usara facturación como fuente. ---
+META_ACCESS_TOKEN: str = _get_secret("META_ACCESS_TOKEN", "")
+
+# IDs de cuenta publicitaria (sin el prefijo "act_", se agrega al armar la
+# URL). Se leen ÚNICAMENTE de secrets.toml/.env (default "" si no están
+# configurados, igual que CLIENTIFY_API_TOKEN) — este archivo está
+# versionado en git, así que NO debe traer los IDs reales como fallback
+# hardcodeado (ver auditoría de secretos de la tarea de integración).
+META_AD_ACCOUNT_ID_SM_CP_INTERNA: str = _get_secret("META_AD_ACCOUNT_ID_INTERNA", "")
+META_AD_ACCOUNT_ID_SOLUCIONES_MIGRATORIAS: str = _get_secret("META_AD_ACCOUNT_ID_SOLUCIONES", "")
+META_AD_ACCOUNT_ID_CONTINGENCIA: str = _get_secret("META_AD_ACCOUNT_ID_CONTINGENCIA", "")
+
 # --- Rutas ---
 DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
