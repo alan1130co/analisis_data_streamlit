@@ -41,7 +41,6 @@ CSV_MODE = "csv"
 CACHE_TTL_SECONDS = 900
 
 _COLOR_FACTURADO = "#F59E0B"
-_COLOR_REAL = "#1F77B4"
 
 
 @st.cache_data(
@@ -207,36 +206,18 @@ def render_ad_spend_billed(
         textposition="outside",
     ))
 
-    max_y = facturado_mensual["Importe"].max() if not facturado_mensual.empty else 0
-
-    if show_comparison and not comparativo.empty:
-        real_by_month = dict(zip(comparativo["Mes_Año"], comparativo["Importe_Real"]))
-        real_values = [real_by_month.get(mes, 0.0) for mes in orden_meses]
-        fig.add_trace(go.Bar(
-            x=orden_meses,
-            y=real_values,
-            name="Gasto real (USD)",
-            marker_color=_COLOR_REAL,
-            text=[f"${v:,.2f}" for v in real_values],
-            textposition="outside",
-        ))
-        if real_values:
-            max_y = max(max_y, max(real_values))
-
-    fig.update_xaxes(type="category", categoryorder="array", categoryarray=orden_meses)
-
     # Rango del eje Y con margen extra por encima de la barra más alta, para
     # que la etiqueta de valor nunca quede recortada arriba — mismo patrón
     # que el resto de "Marketing e Inversión".
+    max_y = facturado_mensual["Importe"].max() if not facturado_mensual.empty else 0
     ymax = max_y * 1.25 if max_y > 0 else 1
 
+    fig.update_xaxes(type="category", categoryorder="array", categoryarray=orden_meses)
     fig.update_layout(
         template="plotly_white",
-        barmode="group",
         xaxis=dict(title="Mes y año", tickangle=-45),
-        yaxis=dict(title="Total (USD)", tickprefix="$", tickformat=",.2f", range=[0, ymax]),
-        legend=dict(x=0.02, y=1.1, orientation="h"),
-        showlegend=show_comparison,
+        yaxis=dict(title="Total facturado (USD)", tickprefix="$", tickformat=",.2f", range=[0, ymax]),
+        showlegend=False,
         bargap=0.25,
         margin=dict(t=80),
     )

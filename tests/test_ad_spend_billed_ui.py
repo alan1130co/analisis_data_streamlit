@@ -258,8 +258,11 @@ def test_api_mode_fetch_lanza_error_cae_a_csv_del_expander(monkeypatch):
 
 
 # --- Comparación opcional real vs facturado (independiente de API/CSV) ---
+# La gráfica muestra SOLO el facturado (una única serie/barra); la
+# comparación contra el gasto real, si corresponde, vive EXCLUSIVAMENTE en
+# la tabla del expander "Ver diferencia mensual", nunca como segunda barra.
 
-def test_con_real_raw_agrega_segunda_barra_de_comparacion():
+def test_con_real_raw_la_grafica_sigue_mostrando_una_sola_serie_pero_el_expander_de_diferencia_aparece():
     def app():
         import pandas as pd
         from src.ui.sections.ad_spend_billed import render_ad_spend_billed, CSV_MODE
@@ -273,9 +276,12 @@ def test_con_real_raw_agrega_segunda_barra_de_comparacion():
 
     assert not at.exception
     traces = _plotly_traces(at)
-    assert len(traces) == 2
-    names = {t["name"] for t in traces}
-    assert names == {"Facturado (USD)", "Gasto real (USD)"}
+    assert len(traces) == 1
+    assert traces[0]["name"] == "Facturado (USD)"
+    chart = at.get("plotly_chart")[0]
+    spec = json.loads(chart.proto.spec)
+    assert spec["layout"].get("showlegend") is False
+    # La comparación real vs facturado queda en su propia tabla, no en la gráfica.
     assert any("Real" in e.label and "Facturado" in e.label for e in at.expander)
 
 
