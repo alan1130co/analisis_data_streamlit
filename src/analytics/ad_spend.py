@@ -155,6 +155,48 @@ def monthly_ad_spend_with_period(df: pd.DataFrame) -> pd.DataFrame:
     return grouped[_MONTHLY_WITH_PERIOD_COLUMNS].reset_index(drop=True)
 
 
+_REAL_VS_BILLED_COLUMNS = ["Año", "Mes_num", "Mes_Año", "Importe_Real", "Importe_Facturado", "Diferencia"]
+
+
+def combine_real_vs_billed_monthly(real_mensual: pd.DataFrame, facturado_mensual: pd.DataFrame) -> pd.DataFrame:
+    """Cruza el gasto real mensual (Insights de la API, `monthly_ad_spend_
+    with_period` sobre el DataFrame de `meta_ads_api.fetch_meta_ad_spend`)
+    con lo facturado mensual (cobros de Meta, `monthly_ad_spend_with_period`
+    sobre el CSV de Facturación) por período — usada por "Gasto facturado
+    por mes (cobros de Meta)" (`src/ui/sections/ad_spend_billed.py`) para la
+    comparación opcional real vs facturado.
+
+    Outer join — mismo criterio que `ad_spend_vs_closures.combine_ad_spend_
+    and_pauta_process_value`: un mes con gasto real pero sin facturación
+    todavía (el cobro no llegó al umbral de Meta) o viceversa se conserva
+    igual (0.0 en el lado faltante), no se descarta.
+
+    Columnas devueltas: "Año", "Mes_num", "Mes_Año", "Importe_Real",
+    "Importe_Facturado", "Diferencia" (Real - Facturado).
+    """
+    empty = pd.DataFrame(columns=_REAL_VS_BILLED_COLUMNS)
+    if real_mensual.empty and facturado_mensual.empty:
+        return empty
+
+    real = (
+        real_mensual.rename(columns={IMPORTE_COL: "Importe_Real"})
+        if not real_mensual.empty
+        else pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Importe_Real"])
+    )
+    facturado = (
+        facturado_mensual.rename(columns={IMPORTE_COL: "Importe_Facturado"})
+        if not facturado_mensual.empty
+        else pd.DataFrame(columns=["Año", "Mes_num", "Mes_Año", "Importe_Facturado"])
+    )
+
+    combined = pd.merge(real, facturado, on=["Año", "Mes_num", "Mes_Año"], how="outer")
+    combined["Importe_Real"] = combined["Importe_Real"].fillna(0.0)
+    combined["Importe_Facturado"] = combined["Importe_Facturado"].fillna(0.0)
+    combined["Diferencia"] = combined["Importe_Real"] - combined["Importe_Facturado"]
+    combined = combined.sort_values(["Año", "Mes_num"])
+    return combined[_REAL_VS_BILLED_COLUMNS].reset_index(drop=True)
+
+
 # --- Selectores independientes Año/Mes de las 6 gráficas de "Marketing e
 # Inversión" (src/ui/sections/ad_spend*.py). Funciones puras/testeables acá
 # para que las 6 compartan EXACTAMENTE la misma lógica de parseo/filtrado —

@@ -7,6 +7,7 @@ from src.analytics.ad_spend import (
     anios_disponibles,
     avoid_label_collision_positions,
     combine_ad_spend_sources,
+    combine_real_vs_billed_monthly,
     compact_month_xaxis_range,
     filter_by_anio_mes,
     monthly_ad_spend,
@@ -157,6 +158,78 @@ def test_monthly_ad_spend_with_period_df_vacio():
     out = monthly_ad_spend_with_period(pd.DataFrame())
     assert out.empty
     assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe"]
+
+
+# ---------------------------------------------------------------------------
+# combine_real_vs_billed_monthly — comparación real vs facturado de "Gasto
+# facturado por mes (cobros de Meta)" (src/ui/sections/ad_spend_billed.py)
+# ---------------------------------------------------------------------------
+
+def test_combine_real_vs_billed_monthly_calcula_diferencia():
+    real = monthly_ad_spend_with_period(pd.DataFrame([
+        {"Fecha": "01/03/2026", "Divisa": "USD", "Importe": "100"},
+        {"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "200"},
+    ]))
+    facturado = monthly_ad_spend_with_period(pd.DataFrame([
+        {"Fecha": "01/03/2026", "Divisa": "USD", "Importe": "80"},
+        {"Fecha": "01/04/2026", "Divisa": "USD", "Importe": "200"},
+    ]))
+
+    out = combine_real_vs_billed_monthly(real, facturado)
+
+    assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe_Real", "Importe_Facturado", "Diferencia"]
+    marzo = out[out["Mes_Año"] == "Marzo 2026"].iloc[0]
+    assert marzo["Importe_Real"] == 100.0
+    assert marzo["Importe_Facturado"] == 80.0
+    assert marzo["Diferencia"] == 20.0
+    abril = out[out["Mes_Año"] == "Abril 2026"].iloc[0]
+    assert abril["Diferencia"] == 0.0
+
+
+def test_combine_real_vs_billed_monthly_outer_join_mes_sin_facturar_todavia():
+    """Un mes con gasto real pero sin facturación todavía (no llegó al
+    umbral de Meta) debe conservarse con Importe_Facturado=0, no descartarse."""
+    real = monthly_ad_spend_with_period(pd.DataFrame([
+        {"Fecha": "01/05/2026", "Divisa": "USD", "Importe": "50"},
+    ]))
+    facturado = monthly_ad_spend_with_period(pd.DataFrame())
+
+    out = combine_real_vs_billed_monthly(real, facturado)
+
+    assert len(out) == 1
+    assert out.iloc[0]["Importe_Real"] == 50.0
+    assert out.iloc[0]["Importe_Facturado"] == 0.0
+    assert out.iloc[0]["Diferencia"] == 50.0
+
+
+def test_combine_real_vs_billed_monthly_mes_facturado_sin_gasto_real_registrado():
+    real = monthly_ad_spend_with_period(pd.DataFrame())
+    facturado = monthly_ad_spend_with_period(pd.DataFrame([
+        {"Fecha": "01/06/2026", "Divisa": "USD", "Importe": "30"},
+    ]))
+
+    out = combine_real_vs_billed_monthly(real, facturado)
+
+    assert len(out) == 1
+    assert out.iloc[0]["Importe_Real"] == 0.0
+    assert out.iloc[0]["Importe_Facturado"] == 30.0
+    assert out.iloc[0]["Diferencia"] == -30.0
+
+
+def test_combine_real_vs_billed_monthly_ambos_vacios_devuelve_vacio_con_columnas():
+    out = combine_real_vs_billed_monthly(pd.DataFrame(), pd.DataFrame())
+    assert out.empty
+    assert list(out.columns) == ["Año", "Mes_num", "Mes_Año", "Importe_Real", "Importe_Facturado", "Diferencia"]
+
+
+def test_combine_real_vs_billed_monthly_orden_cronologico():
+    real = pd.DataFrame()
+    facturado = monthly_ad_spend_with_period(pd.DataFrame([
+        {"Fecha": "01/12/2025", "Divisa": "USD", "Importe": "10"},
+        {"Fecha": "01/01/2026", "Divisa": "USD", "Importe": "20"},
+    ]))
+    out = combine_real_vs_billed_monthly(real, facturado)
+    assert list(out["Mes_Año"]) == ["Diciembre 2025", "Enero 2026"]
 
 
 # ---------------------------------------------------------------------------

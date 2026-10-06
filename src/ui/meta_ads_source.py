@@ -15,6 +15,7 @@ import streamlit as st
 from src.config.settings import APP_TIMEZONE, META_ACCESS_TOKEN
 from src.data_sources.meta_ads_api import DEFAULT_SINCE, MetaAdsAPIError, fetch_meta_ad_spend
 from src.ui.sections.ad_spend import load_ad_spend_files
+from src.ui.sections.ad_spend_billed import clear_meta_billing_cache
 from src.utils.sync_timing import log_marker, timed_stage
 
 API_OPTION = "API de Meta"
@@ -44,6 +45,15 @@ def clear_meta_api_cache() -> None:
     """Limpia el cache de `_cached_fetch_meta_ad_spend` — usado por el botón
     "Actualizar datos de Meta" para forzar una recarga inmediata."""
     _cached_fetch_meta_ad_spend.clear()
+
+
+def clear_meta_api_and_billing_cache() -> None:
+    """Limpia TANTO el cache del gasto real (`clear_meta_api_cache`) COMO
+    el de lo facturado (`ad_spend_billed.clear_meta_billing_cache`) — el
+    botón "Actualizar datos de Meta" refresca las 2 gráficas con un solo
+    click, no solo la de gasto real."""
+    clear_meta_api_cache()
+    clear_meta_billing_cache()
 
 
 def render_meta_ads_source() -> tuple[pd.DataFrame, list, str]:
@@ -119,7 +129,7 @@ def render_meta_ads_source() -> tuple[pd.DataFrame, list, str]:
         st.caption(f"Última actualización: {fetched_at}.")
 
     if st.button("🔄 Actualizar datos de Meta", use_container_width=True):
-        clear_meta_api_cache()
+        clear_meta_api_and_billing_cache()
         st.rerun()
 
     return df, None, source

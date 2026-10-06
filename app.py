@@ -45,6 +45,9 @@ from src.ui.sections.closures_by_gender import render_closures_by_gender
 from src.ui.sections.closures_vs_second_closures import render_closures_vs_second_closures
 from src.ui.sections.closures_by_channel_over_time import render_closures_by_channel_over_time
 from src.ui.sections.ad_spend import render_ad_spend, render_ad_spend_from_raw
+from src.ui.sections.ad_spend_billed import API_MODE as BILLED_API_MODE
+from src.ui.sections.ad_spend_billed import CSV_MODE as BILLED_CSV_MODE
+from src.ui.sections.ad_spend_billed import render_ad_spend_billed
 from src.ui.sections.ad_spend_vs_closures import render_ad_spend_vs_closures
 from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
 from src.ui.sections.ad_spend_vs_revenue import render_ad_spend_vs_revenue
@@ -106,8 +109,13 @@ def main():
     with tab1:
         if meta_source == META_CSV_OPTION:
             render_ad_spend(meta_billing_files)
+            # Misma fuente CSV reutilizada tal cual (sin pedirla 2 veces) —
+            # ambas gráficas mostrarían lo mismo, así que se omite la línea
+            # de comparación (sería una diferencia trivial, siempre 0).
+            render_ad_spend_billed(BILLED_CSV_MODE, csv_reuse_raw=gasto_raw)
         else:
             render_ad_spend_from_raw(gasto_raw)
+            render_ad_spend_billed(BILLED_API_MODE, real_raw=gasto_raw)
 
     # --- Fuente de contactos de Clientify (Excel o API): puede bloquear el
     # script varios minutos si dispara un sync completo contra la API real.
