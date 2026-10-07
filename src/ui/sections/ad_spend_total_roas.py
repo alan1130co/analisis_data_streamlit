@@ -14,7 +14,6 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
-    avoid_label_collision_positions,
     compact_month_xaxis_range,
     default_anio_index,
     filter_by_anio_mes,
@@ -25,6 +24,7 @@ from src.analytics.ad_spend_vs_closures import (
     combine_ad_spend_total_revenue_and_roas,
 )
 from src.config.settings import APP_TIMEZONE
+from src.ui.charts import build_stacked_bar_line_figure
 
 _TITLE = (
     "📊 Gasto total (pauta + honorarios) vs Ingresos por cuota inicial "
@@ -64,6 +64,11 @@ def render_ad_spend_total_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
     "zoom" al eje (`xaxis.range`, ver `compact_month_xaxis_range`) para que
     la vista quede compacta en esa única barra, sin recortar el
     `categoryarray` (mismo mecanismo que `ad_spend_roas.py`).
+
+    Fix 2026-10-07: barras y línea ahora viven en 2 paneles apilados
+    (`src.ui.charts.build_stacked_bar_line_figure`) en vez de compartir
+    panel con un eje Y secundario — mismo fix que `ad_spend_roas.py`, ver
+    ese archivo para el detalle del bug reportado.
     """
     st.markdown(f"### {_TITLE}")
 
@@ -115,73 +120,38 @@ def render_ad_spend_total_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
     max_roas = df_roas_base["ROAS"].max() if not df_roas_base.empty else 0
     ymax2 = max_roas * 1.25 if max_roas > 0 else 1
 
-    # Posición de la etiqueta de la línea de ROAS: "bottom center" en los
-    # meses donde quedaría a una altura de píxel similar a la de CUALQUIERA
-    # de las 2 barras agrupadas (Gasto Total, Ingreso) — evita que los
-    # números queden encimados (mismo arreglo que `ad_spend_roas.py`).
-    bar_categorias_repetidas = pd.concat([df_barras["Mes_Año"], df_barras["Mes_Año"]], ignore_index=True)
-    bar_valores_repetidos = pd.concat([df_barras["Gasto_Total"], df_barras["Ingreso_CuotaInicial"]], ignore_index=True)
-    line_textposition = avoid_label_collision_positions(
-        categories=df_roas_base["Mes_Año"].tolist(),
-        values=df_roas_base["ROAS"].tolist(),
-        axis_max=ymax2,
-        reference_categories=bar_categorias_repetidas.tolist(),
-        reference_values=bar_valores_repetidos.tolist(),
-        reference_axis_max=ymax,
-    )
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Bar(
-        x=df_barras["Mes_Año"],
-        y=df_barras["Gasto_Total"],
-        name="Gasto total (pauta + honorarios) USD",
-        marker_color=_COLOR_GASTO,
-        text=txt_gasto,
-        textposition="outside",
-        offsetgroup="gasto",
-    ))
-
-    fig.add_trace(go.Bar(
-        x=df_barras["Mes_Año"],
-        y=df_barras["Ingreso_CuotaInicial"],
-        name="Ingresos por cuota inicial (redes) USD",
-        marker_color=_COLOR_ING,
-        text=txt_ing,
-        textposition="outside",
-        offsetgroup="ingreso",
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=df_roas_base["Mes_Año"],
-        y=df_roas_base["ROAS"],
+    bar_traces = [
+        go.Bar(
+            x=df_barras["Mes_Año"], y=df_barras["Gasto_Total"],
+            name="Gasto total (pauta + honorarios) USD", marker_color=_COLOR_GASTO,
+            text=txt_gasto, textposition="outside", offsetgroup="gasto",
+        ),
+        go.Bar(
+            x=df_barras["Mes_Año"], y=df_barras["Ingreso_CuotaInicial"],
+            name="Ingresos por cuota inicial (redes) USD", marker_color=_COLOR_ING,
+            text=txt_ing, textposition="outside", offsetgroup="ingreso",
+        ),
+    ]
+    line_trace = go.Scatter(
+        x=df_roas_base["Mes_Año"], y=df_roas_base["ROAS"],
         name="ROAS (Ingreso / Gasto)",
         mode="lines+markers+text",
         marker=dict(color=_COLOR_ROAS, size=9),
         line=dict(width=3),
         text=txt_roas,
-        textposition=line_textposition,
-        yaxis="y2",
-    ))
+        textposition="top center",
+    )
 
     categoryarray = df_roas_base["Mes_Año"].tolist()
-    xaxis_kwargs = dict(type="category", categoryorder="array", categoryarray=categoryarray)
     xaxis_range = compact_month_xaxis_range(categoryarray, anio_sel, mes_sel)
-    if xaxis_range is not None:
-        xaxis_kwargs["range"] = xaxis_range
-    fig.update_xaxes(**xaxis_kwargs)
 
-    fig.update_layout(
-        template="plotly_white",
-        barmode="group",
+    fig = build_stacked_bar_line_figure(
+        bar_traces, line_trace,
+        categoryarray=categoryarray,
+        bar_yaxis=dict(title_text="Valor (USD)", showgrid=True, range=[0, ymax], tickprefix="$", tickformat=",.0f"),
+        line_yaxis=dict(title_text="ROAS (x)", showgrid=False, tickformat=".2f", range=[0, ymax2]),
+        xaxis_range=xaxis_range,
         bargap=0.35,
-        bargroupgap=0.15,
-        xaxis=dict(title="Mes y Año", tickangle=-45),
-        yaxis=dict(title="Valor (USD)", side="left", showgrid=True, range=[0, ymax], tickprefix="$", tickformat=",.0f"),
-        yaxis2=dict(title="ROAS (x)", overlaying="y", side="right", showgrid=False, tickformat=".2f", range=[0, ymax2]),
-        legend=dict(x=0.02, y=1.15, orientation="h"),
-        margin=dict(t=80),
     )
-    fig.update_traces(cliponaxis=False)
 
     st.plotly_chart(fig, use_container_width=True)

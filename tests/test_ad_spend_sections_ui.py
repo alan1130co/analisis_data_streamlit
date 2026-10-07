@@ -823,18 +823,16 @@ def test_bar_charts_yaxis_range_deja_margen_para_que_el_valor_no_se_recorte():
         assert yaxis["range"][1] > max_value, f"{nombre}: el rango no deja margen sobre el valor máximo"
 
 
-def test_render_ad_spend_cost_per_lead_evita_colision_entre_etiqueta_de_barra_y_de_linea():
-    """Regresión del bug reportado: en "Gasto en pauta vs. Costo promedio
-    por lead de redes", cuando el punto de la línea cae a una altura de
-    píxel similar a la de la barra de ese mismo mes, las 2 etiquetas de
-    texto quedaban encimadas e ilegibles (ej. "$7,656.03" sobre "$390.67").
-
-    Fixture con 2 meses diseñados para que las fracciones normalizadas
-    (valor / máximo de su propio eje) coincidan exactamente en Marzo
-    (0.8 == 0.8 -> colisión) y difieran de sobra en Abril (0.8 vs 0.1 -> sin
-    colisión): Importe=800 ambos meses (bar_frac=0.8 fijo); Valor_por_Lead
-    Marzo=800/2=400 (line_frac=400/500=0.8, colisiona) y Abril=800/16=50
-    (line_frac=50/500=0.1, no colisiona)."""
+def test_render_ad_spend_cost_per_lead_barra_y_linea_quedan_en_paneles_separados():
+    """Regresión del bug reportado (2026-10-07): en "Gasto en pauta vs.
+    Costo promedio por lead de redes", cuando el punto de la línea caía a
+    una altura de píxel similar a la de la barra de ese mismo mes, las 2
+    etiquetas de texto quedaban encimadas e ilegibles (ej. "$7,656.03"
+    sobre "$390.67"). Fix: barra y línea ahora viven en 2 PANELES
+    APILADOS con eje Y propio cada uno — no pueden colisionar en altura de
+    píxel sin importar qué tan parecidas sean sus fracciones normalizadas
+    (antes el caso de colisión real: Importe=800 ambos meses, Valor_por_Lead
+    Marzo=800/2=400 con fracción casi idéntica a la de la barra)."""
     def app():
         import pandas as pd
         from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
@@ -870,19 +868,27 @@ def test_render_ad_spend_cost_per_lead_evita_colision_entre_etiqueta_de_barra_y_
     bar_trace, line_trace = traces[0], traces[1]
     assert list(bar_trace["x"]) == ["Marzo 2025", "Abril 2025"]
     assert bar_trace["textposition"] == "outside"
-
-    # La línea YA NO usa una única posición fija para todos los puntos.
     assert list(line_trace["x"]) == ["Marzo 2025", "Abril 2025"]
-    assert line_trace["textposition"] == ["bottom center", "top center"]
+
+    # Panel separado (make_subplots rows=2, cols=1): la barra vive en
+    # x1/y1 (fila 1), la línea en x2/y2 (fila 2) — nunca comparten eje, así
+    # que no pueden colisionar en altura de píxel sin importar el valor.
+    # Ya no hace falta alternar "top"/"bottom center" — la línea siempre
+    # usa "top center".
+    assert bar_trace.get("yaxis") == "y"
+    assert line_trace.get("yaxis") == "y2"
+    assert line_trace["textposition"] == "top center"
 
 
-def test_bar_y_linea_textposition_configuradas_de_forma_distinta_en_todas_las_graficas_de_marketing():
+def test_bar_y_linea_en_paneles_separados_en_todas_las_graficas_de_marketing():
     """Consistencia entre las 5 gráficas de barras+línea de "Marketing e
-    Inversión": la traza de la línea debe traer un `textposition` por punto
-    (lista), NUNCA una única cadena fija ("top center") igual para todos los
-    meses — es lo que permite separarla de la etiqueta de la barra cuando
-    quedan a una altura similar. La traza de barra(s) se mantiene en
-    "outside" en todos los casos (sin cambios)."""
+    Inversión": barra(s) y línea deben vivir en 2 PANELES APILADOS (ejes
+    X/Y distintos, fila 1 vs fila 2) — nunca en el mismo panel con un eje Y
+    secundario, que es lo que permitía que la línea tapara las etiquetas de
+    valor de las barras (bug reportado 2026-10-07). La traza de barra(s) se
+    mantiene en "outside" en todos los casos (sin cambios); la línea ya no
+    necesita un `textposition` distinto por punto — con panel propio,
+    "top center" fijo es suficiente."""
     def app_cost_per_lead():
         import pandas as pd
         from src.ui.sections.ad_spend_cost_per_lead import render_ad_spend_cost_per_lead
@@ -1004,14 +1010,11 @@ def test_bar_y_linea_textposition_configuradas_de_forma_distinta_en_todas_las_gr
 
         for bar in bar_traces:
             assert bar["textposition"] == "outside", f"{nombre}: la barra debe seguir en 'outside'"
+            assert bar.get("yaxis", "y") == "y", f"{nombre}: la barra debe estar en el panel 1 (yaxis 'y')"
 
         for line in line_traces:
-            textposition = line["textposition"]
-            # Debe ser un arreglo por punto (uno por mes), no una única
-            # cadena fija compartida por todos los puntos de la traza.
-            assert isinstance(textposition, list), (
-                f"{nombre}: la línea debe traer un textposition por punto, "
-                f"no una cadena fija — se encontró {textposition!r}"
+            assert line["textposition"] == "top center", (
+                f"{nombre}: con panel propio, la línea ya no necesita alternar "
+                f"'top'/'bottom center' — se encontró {line['textposition']!r}"
             )
-            assert len(textposition) == len(line["x"])
-            assert set(textposition) <= {"top center", "bottom center"}
+            assert line.get("yaxis") == "y2", f"{nombre}: la línea debe estar en el panel 2 (yaxis 'y2')"

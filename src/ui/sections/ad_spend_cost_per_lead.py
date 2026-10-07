@@ -10,7 +10,6 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
-    avoid_label_collision_positions,
     default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend,
@@ -20,6 +19,7 @@ from src.analytics.ad_spend_vs_closures import (
     combine_ad_spend_and_cost_per_lead,
 )
 from src.config.settings import APP_TIMEZONE
+from src.ui.charts import build_stacked_bar_line_figure
 
 
 def _anio_actual() -> int:
@@ -42,7 +42,12 @@ def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.Data
 
     Decorado con `@st.fragment`: `gasto_raw`/`df_clientify` ya vienen
     cargados desde fuera — cambiar Año/Mes acá no reejecuta esa carga ni el
-    resto de la pestaña."""
+    resto de la pestaña.
+
+    Fix 2026-10-07: barra y línea ahora viven en 2 paneles apilados
+    (`src.ui.charts.build_stacked_bar_line_figure`) en vez de compartir
+    panel con un eje Y secundario — la línea de costo por lead ya no puede
+    tapar las etiquetas de valor de la barra de gasto."""
     st.markdown("### 💸 Gasto en pauta vs. Costo promedio por lead de redes (Mes-Año)")
 
     if gasto_raw is None or gasto_raw.empty:
@@ -88,54 +93,28 @@ def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.Data
     max_y2 = df_comb["Valor_por_Lead"].max() if not df_comb.empty else 0
     ymax2 = max_y2 * 1.25 if max_y2 > 0 else 1
 
-    # Posición de la etiqueta de la línea (costo por lead): "bottom center"
-    # en vez de "top center" en los meses donde quedaría a una altura de
-    # píxel similar a la de la barra de gasto de ese mismo mes — evita que
-    # ambos números queden encimados e ilegibles.
     meses = df_comb["Mes_Año"].tolist()
-    line_textposition = avoid_label_collision_positions(
-        categories=meses,
-        values=df_comb["Valor_por_Lead"].tolist(),
-        axis_max=ymax2,
-        reference_categories=meses,
-        reference_values=df_comb["Importe"].tolist(),
-        reference_axis_max=ymax1,
-    )
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Bar(
-        x=df_comb["Mes_Año"],
-        y=df_comb["Importe"],
+    bar_traces = [go.Bar(
+        x=df_comb["Mes_Año"], y=df_comb["Importe"],
         name="Gasto en pauta (USD)",
         marker_color=px.colors.qualitative.Vivid[0],
         text=[f"${v:,.2f}" for v in df_comb["Importe"]],
         textposition="outside",
-        yaxis="y1",
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=df_comb["Mes_Año"],
-        y=df_comb["Valor_por_Lead"],
+    )]
+    line_trace = go.Scatter(
+        x=df_comb["Mes_Año"], y=df_comb["Valor_por_Lead"],
         name="Costo por lead (USD)",
         mode="lines+markers+text",
         marker=dict(color=px.colors.qualitative.Dark2[2], size=8),
         line=dict(width=3),
         text=[f"${v:,.2f}" if v > 0 else "" for v in df_comb["Valor_por_Lead"]],
-        textposition=line_textposition,
-        yaxis="y2",
-    ))
-
-    fig.update_xaxes(type="category", categoryorder="array", categoryarray=df_comb["Mes_Año"].tolist())
-
-    fig.update_layout(
-        template="plotly_white",
-        xaxis=dict(title="Mes y Año", tickangle=-45),
-        yaxis=dict(title="Gasto total en pauta (USD)", side="left", showgrid=True, tickprefix="$", tickformat=",.0f", range=[0, ymax1]),
-        yaxis2=dict(title="Costo promedio por lead (USD)", overlaying="y", side="right", tickprefix="$", tickformat=",.0f", range=[0, ymax2]),
-        legend=dict(x=0.02, y=1.1, orientation="h"),
-        bargap=0.25,
-        margin=dict(t=80),
+        textposition="top center",
     )
-    fig.update_traces(cliponaxis=False)
+
+    fig = build_stacked_bar_line_figure(
+        bar_traces, line_trace,
+        categoryarray=meses,
+        bar_yaxis=dict(title_text="Gasto total en pauta (USD)", showgrid=True, tickprefix="$", tickformat=",.0f", range=[0, ymax1]),
+        line_yaxis=dict(title_text="Costo promedio por lead (USD)", showgrid=False, tickprefix="$", tickformat=",.0f", range=[0, ymax2]),
+    )
     st.plotly_chart(fig, use_container_width=True)
