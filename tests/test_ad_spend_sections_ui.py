@@ -65,7 +65,17 @@ class _FakeUploadedFile:
         return self._data
 
 
-def test_render_ad_spend_selector_anio_mes_4_combinaciones():
+def test_render_ad_spend_selector_anio_mes_4_combinaciones(monkeypatch):
+    # Este test es sobre la MECÁNICA de filtrado Año/Mes (no sobre el
+    # default = año actual, cubierto en tests/test_ad_spend.py y en
+    # test_ad_spend_billed_año_actual_ui.py) — se neutraliza el año actual a
+    # un sentinel ausente del fixture (vía `monkeypatch`, auto-revierte al
+    # terminar el test — una asignación directa dejaría el módulo real
+    # mutado para el resto de la sesión de pytest) para que el default siga
+    # siendo "Todos", como asumen las 4 combinaciones de este test.
+    from src.ui.sections import ad_spend as ad_spend_section
+    monkeypatch.setattr(ad_spend_section, "_anio_actual", lambda: 1900)
+
     def app():
         import streamlit as st
         from tests.test_ad_spend_sections_ui import _FakeUploadedFile
@@ -106,7 +116,12 @@ def test_render_ad_spend_selector_anio_mes_4_combinaciones():
     assert _plotly_x_values_all_traces(at) == ["Marzo 2026"]
 
 
-def test_render_ad_spend_roas_selector_anio_mes_4_combinaciones_con_linea_roas_completa():
+def test_render_ad_spend_roas_selector_anio_mes_4_combinaciones_con_linea_roas_completa(monkeypatch):
+    # Neutraliza el default = año actual (ver test arriba) — este test es
+    # sobre la mecánica de filtrado, no sobre el default.
+    from src.ui.sections import ad_spend_roas as ad_spend_roas_section
+    monkeypatch.setattr(ad_spend_roas_section, "_anio_actual", lambda: 1900)
+
     def app():
         import streamlit as st
         import pandas as pd
@@ -358,7 +373,12 @@ def test_render_ad_spend_total_roas_anio_especifico_no_filtra_otros_anios_de_la_
     assert "Octubre 2026" not in linea_roas_x
 
 
-def test_render_ad_spend_vs_closures_selector_anio_mes_default_y_filtro_puntual():
+def test_render_ad_spend_vs_closures_selector_anio_mes_default_y_filtro_puntual(monkeypatch):
+    # Neutraliza el default = año actual (ver primer test del archivo) —
+    # este test es sobre la mecánica de filtrado, no sobre el default.
+    from src.ui.sections import ad_spend_vs_closures as ad_spend_vs_closures_section
+    monkeypatch.setattr(ad_spend_vs_closures_section, "_anio_actual", lambda: 1900)
+
     def app():
         import streamlit as st
         import pandas as pd
@@ -390,7 +410,12 @@ def test_render_ad_spend_vs_closures_selector_anio_mes_default_y_filtro_puntual(
     assert _plotly_x_values(at) == ["Marzo 2026"]
 
 
-def test_render_ad_spend_cost_per_lead_selector_anio_mes_default_y_filtro_puntual():
+def test_render_ad_spend_cost_per_lead_selector_anio_mes_default_y_filtro_puntual(monkeypatch):
+    # Neutraliza el default = año actual (ver primer test del archivo) —
+    # este test es sobre la mecánica de filtrado, no sobre el default.
+    from src.ui.sections import ad_spend_cost_per_lead as ad_spend_cost_per_lead_section
+    monkeypatch.setattr(ad_spend_cost_per_lead_section, "_anio_actual", lambda: 1900)
+
     def app():
         import streamlit as st
         import pandas as pd
@@ -499,7 +524,12 @@ def test_render_ad_spend_total_roas_selector_anio_mes_default_y_linea_roas_compl
     assert list(traces[2]["x"]) == ["Marzo 2025", "Abril 2025"]
 
 
-def test_render_ad_spend_vs_process_value_selector_anio_mes_default_y_filtro_puntual():
+def test_render_ad_spend_vs_process_value_selector_anio_mes_default_y_filtro_puntual(monkeypatch):
+    # Neutraliza el default = año actual (ver primer test del archivo) —
+    # este test es sobre la mecánica de filtrado, no sobre el default.
+    from src.ui.sections import ad_spend_vs_process_value as ad_spend_vs_process_value_section
+    monkeypatch.setattr(ad_spend_vs_process_value_section, "_anio_actual", lambda: 1900)
+
     def app():
         import streamlit as st
         import pandas as pd
@@ -572,7 +602,12 @@ def _df_clientify_process_value_roas_fixture():
     ])
 
 
-def test_render_ad_spend_vs_process_value_roas_selector_anio_mes_4_combinaciones_con_linea_roas():
+def test_render_ad_spend_vs_process_value_roas_selector_anio_mes_4_combinaciones_con_linea_roas(monkeypatch):
+    # Neutraliza el default = año actual (ver primer test del archivo) —
+    # este test es sobre la mecánica de filtrado, no sobre el default.
+    from src.ui.sections import ad_spend_vs_process_value_roas as ad_spend_vs_process_value_roas_section
+    monkeypatch.setattr(ad_spend_vs_process_value_roas_section, "_anio_actual", lambda: 1900)
+
     def app():
         import pandas as pd
         from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas

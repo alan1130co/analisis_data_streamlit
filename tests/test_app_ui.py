@@ -66,7 +66,7 @@ def _build_app_with_fake_api_client():
     def app():
         import pandas as pd
         from tests.test_app_ui import _full_schema_fake_api_df
-        from src.ui import api_source, meta_ads_source
+        from src.ui import api_source, data_source_selector, meta_ads_source
         from src.ui.data_source_selector import API_OPTION
 
         class _FakeClient:
@@ -78,6 +78,7 @@ def _build_app_with_fake_api_client():
 
         api_source.ClientifyAPIClient = _FakeClient
         api_source.CLIENTIFY_API_TOKEN = "fake-token-para-test-app-ui"
+        data_source_selector.CLIENTIFY_API_TOKEN = "fake-token-para-test-app-ui"
         api_source._load_and_prepare_from_api.clear()
 
         # Fuente de gasto en pauta de Meta: sin estas pruebas, no tiene nada
@@ -97,8 +98,13 @@ def _build_app_with_fake_api_client():
 
 def _no_source_app():
     def app():
-        from src.ui import meta_ads_source
+        from src.ui import meta_ads_source, data_source_selector
         meta_ads_source.META_ACCESS_TOKEN = ""
+        # Fuerza el default a Excel (no API) — este test es sobre el
+        # placeholder de "sin fuente elegida", no sobre Clientify; sin esto,
+        # el default pasaría a API (si hay un CLIENTIFY_API_TOKEN real en el
+        # secrets.toml local) y dispararía un fetch real sin mock.
+        data_source_selector.CLIENTIFY_API_TOKEN = ""
 
         import src.auth as auth
         auth.check_password = lambda: True

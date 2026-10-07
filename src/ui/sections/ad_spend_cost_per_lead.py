@@ -11,6 +11,7 @@ from src.analytics.ad_spend import (
     MESES_ES,
     anios_disponibles,
     avoid_label_collision_positions,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend,
 )
@@ -18,19 +19,30 @@ from src.analytics.ad_spend_vs_closures import (
     closures_from_redes_total_monthly,
     combine_ad_spend_and_cost_per_lead,
 )
+from src.config.settings import APP_TIMEZONE
 
 
+def _anio_actual() -> int:
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
+
+
+@st.fragment
 def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) -> None:
     """`gasto_raw`: reporte de Meta ya cargado/combinado (salida de
     `load_ad_spend_files`, ver `src/ui/sections/ad_spend.py`).
     `df_clientify`: dataset completo de Clientify (df_unfiltered) — igual
     que el resto de gráficas históricas de esta pestaña.
 
-    2 selectores independientes: "Año" (`key="anio_ad_spend_cost_per_lead"`)
-    y "Mes" (`key="mes_ad_spend_cost_per_lead"`), ambos default "Todos" —
-    filtran ambos traces (barra de gasto y línea de costo por lead) igual
-    (ver `ad_spend.filter_by_anio_mes`, compartida por las 6 gráficas).
-    """
+    2 selectores independientes: "Año" (`key="anio_ad_spend_cost_per_lead"`,
+    default el año actual si está entre los datos, si no "Todos" — ver
+    `default_anio_index`) y "Mes" (`key="mes_ad_spend_cost_per_lead"`,
+    default "Todos") — filtran ambos traces (barra de gasto y línea de
+    costo por lead) igual (ver `ad_spend.filter_by_anio_mes`, compartida
+    por las 6 gráficas).
+
+    Decorado con `@st.fragment`: `gasto_raw`/`df_clientify` ya vienen
+    cargados desde fuera — cambiar Año/Mes acá no reejecuta esa carga ni el
+    resto de la pestaña."""
     st.markdown("### 💸 Gasto en pauta vs. Costo promedio por lead de redes (Mes-Año)")
 
     if gasto_raw is None or gasto_raw.empty:
@@ -55,10 +67,11 @@ def render_ad_spend_cost_per_lead(gasto_raw: pd.DataFrame, df_clientify: pd.Data
     if not meses_disponibles:
         st.info("No hay datos para mostrar.")
         return
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend_cost_per_lead",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend_cost_per_lead",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),

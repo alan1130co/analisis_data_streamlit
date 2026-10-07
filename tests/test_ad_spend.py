@@ -9,6 +9,7 @@ from src.analytics.ad_spend import (
     combine_ad_spend_sources,
     combine_real_vs_billed_monthly,
     compact_month_xaxis_range,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend,
     monthly_ad_spend_with_period,
@@ -247,6 +248,27 @@ def test_parse_mes_anio():
 
 def test_anios_disponibles_unicos_y_ordenados():
     assert anios_disponibles(_LABELS_2_ANIOS) == [2025, 2026]
+
+
+# ---------------------------------------------------------------------------
+# default_anio_index — default del selector "Año": año actual si está
+# presente en los datos, si no "Todos" (índice 0)
+# ---------------------------------------------------------------------------
+
+def test_default_anio_index_anio_actual_presente():
+    assert default_anio_index([2024, 2025, 2026], 2026) == 3  # TODOS=0, 2024=1, 2025=2, 2026=3
+
+
+def test_default_anio_index_anio_actual_es_el_unico():
+    assert default_anio_index([2026], 2026) == 1
+
+
+def test_default_anio_index_anio_actual_ausente_cae_a_todos():
+    assert default_anio_index([2024, 2025], 2026) == 0
+
+
+def test_default_anio_index_lista_vacia_cae_a_todos():
+    assert default_anio_index([], 2026) == 0
 
 
 def test_filter_by_anio_mes_todos_todos_devuelve_todo():

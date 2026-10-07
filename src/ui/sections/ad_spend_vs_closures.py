@@ -11,6 +11,7 @@ from src.analytics.ad_spend import (
     MESES_ES,
     anios_disponibles,
     avoid_label_collision_positions,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend,
 )
@@ -18,8 +19,14 @@ from src.analytics.ad_spend_vs_closures import (
     closures_from_redes_monthly,
     combine_ad_spend_and_closures,
 )
+from src.config.settings import APP_TIMEZONE
 
 
+def _anio_actual() -> int:
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
+
+
+@st.fragment
 def render_ad_spend_vs_closures(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) -> None:
     """`gasto_raw`: reporte de Meta ya cargado/combinado (salida de
     `load_ad_spend_files`, ver `src/ui/sections/ad_spend.py`).
@@ -57,10 +64,11 @@ def render_ad_spend_vs_closures(gasto_raw: pd.DataFrame, df_clientify: pd.DataFr
     if not meses_disponibles:
         st.info("No hay datos para mostrar.")
         return
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend_vs_closures",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend_vs_closures",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),

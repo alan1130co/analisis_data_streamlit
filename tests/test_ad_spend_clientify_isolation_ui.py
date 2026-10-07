@@ -56,7 +56,7 @@ _AD_SPEND_CSV = (
 
 
 def _app():
-    from src.ui import api_source, meta_ads_source
+    from src.ui import api_source, data_source_selector, meta_ads_source
     from tests.test_ad_spend_clientify_isolation_ui import _fake_client_calls, _cache_cleared, _fake_api_contact_df
 
     class _FakeClient:
@@ -69,6 +69,7 @@ def _app():
 
     api_source.ClientifyAPIClient = _FakeClient
     api_source.CLIENTIFY_API_TOKEN = "fake-token-bug-a-isolation"
+    data_source_selector.CLIENTIFY_API_TOKEN = "fake-token-bug-a-isolation"
     if not _cache_cleared["done"]:
         api_source._load_and_prepare_from_api.clear()
         _cache_cleared["done"] = True

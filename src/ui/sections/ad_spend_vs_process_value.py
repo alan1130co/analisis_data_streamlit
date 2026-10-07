@@ -14,6 +14,7 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend_with_period,
 )
@@ -21,11 +22,17 @@ from src.analytics.ad_spend_vs_closures import (
     calculate_pauta_process_value_chart,
     combine_ad_spend_and_pauta_process_value,
 )
+from src.config.settings import APP_TIMEZONE
 
 _COLOR_GASTO = "#1F77B4"
 _COLOR_VALOR = "#16A34A"
 
 
+def _anio_actual() -> int:
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
+
+
+@st.fragment
 def render_ad_spend_vs_process_value(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) -> None:
     """`gasto_raw`: reporte de Meta ya cargado/combinado (salida de
     `load_ad_spend_files`, ver `src/ui/sections/ad_spend.py`).
@@ -64,10 +71,11 @@ def render_ad_spend_vs_process_value(gasto_raw: pd.DataFrame, df_clientify: pd.D
         return
 
     meses_disponibles = list(data["Mes_Año"])
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend_process_value",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend_process_value",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),

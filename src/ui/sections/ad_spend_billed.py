@@ -26,6 +26,7 @@ from src.analytics.ad_spend import (
     MESES_ES,
     anios_disponibles,
     combine_real_vs_billed_monthly,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend,
     monthly_ad_spend_with_period,
@@ -41,6 +42,13 @@ CSV_MODE = "csv"
 CACHE_TTL_SECONDS = 900
 
 _COLOR_FACTURADO = "#F59E0B"
+
+
+def _anio_actual() -> int:
+    """Año actual en `APP_TIMEZONE` — default del selector "Año". Función
+    separada (no inline) para que los tests puedan neutralizarla con un
+    sentinel que no exista en su fixture."""
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
 
 
 @st.cache_data(
@@ -168,6 +176,16 @@ def render_ad_spend_billed(
         )
         return
 
+    _render_billed_chart(billed_raw, real_raw)
+
+
+@st.fragment
+def _render_billed_chart(billed_raw: pd.DataFrame, real_raw: pd.DataFrame | None) -> None:
+    """Selectores Año/Mes + gráfico + tabla de diferencia — decorado con
+    `@st.fragment` para que cambiar cualquiera de los 2 selectores solo
+    re-ejecute ESTE bloque, no el resto de la pestaña ni la obtención de
+    `billed_raw` (fetch por API/cache o carga de CSV, que ya ocurrió antes
+    de llamar a esta función)."""
     facturado_mensual = monthly_ad_spend_with_period(billed_raw)
     if facturado_mensual.empty:
         st.warning(
@@ -181,10 +199,11 @@ def render_ad_spend_billed(
     comparativo = combine_real_vs_billed_monthly(real_mensual, facturado_mensual)
 
     meses_disponibles = list(facturado_mensual["Mes_Año"])
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend_billed",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend_billed",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),

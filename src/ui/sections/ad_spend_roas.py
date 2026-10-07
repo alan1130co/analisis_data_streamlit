@@ -24,6 +24,7 @@ from src.analytics.ad_spend import (
     anios_disponibles,
     avoid_label_collision_positions,
     compact_month_xaxis_range,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend_with_period,
 )
@@ -31,6 +32,7 @@ from src.analytics.ad_spend_vs_closures import (
     calculate_redes_initial_payments_chart,
     combine_ad_spend_revenue_and_roas,
 )
+from src.config.settings import APP_TIMEZONE
 
 _TITLE = "💹 Comparativo Mes-Año: Gasto vs Ingreso por Cuota Inicial y ROAS (desde Enero 2025)"
 
@@ -39,6 +41,11 @@ _COLOR_ING = "#FF2D55"
 _COLOR_ROAS = "#34C759"
 
 
+def _anio_actual() -> int:
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
+
+
+@st.fragment
 def render_ad_spend_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) -> None:
     """`gasto_raw`: reporte de Meta ya cargado/combinado (salida de
     `load_ad_spend_files`, ver `src/ui/sections/ad_spend.py`).
@@ -101,10 +108,11 @@ def render_ad_spend_roas(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) ->
         return
 
     meses_disponibles = list(df_comb_full["Mes_Año"])
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend_roas",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend_roas",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),

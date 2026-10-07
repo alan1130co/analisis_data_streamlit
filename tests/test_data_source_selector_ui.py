@@ -40,22 +40,36 @@ def _fake_api_contact_df() -> pd.DataFrame:
     })
 
 
-def _build_app():
+def test_selector_muestra_las_2_opciones_y_api_es_el_default_con_token():
+    """Default actual (cambiado — antes era Excel): con un token
+    configurado, el radio arranca en "Conectar con Clientify API"."""
     def app():
-        from src.ui.data_source_selector import render_data_source_selector
+        from src.ui import data_source_selector
+        data_source_selector.CLIENTIFY_API_TOKEN = "fake-token-default-test"
+        data_source_selector.render_data_source_selector()
 
-        render_data_source_selector()
-
-    return AppTest.from_function(app)
-
-
-def test_selector_muestra_las_2_opciones_y_excel_es_el_default():
-    at = _build_app()
+    at = AppTest.from_function(app)
     at.run(timeout=15)
     assert not at.exception
 
     radio = at.radio[0]
     assert list(radio.options) == ["Subir Excel", "Conectar con Clientify API"]
+    assert radio.value == "Conectar con Clientify API"
+
+
+def test_selector_sin_token_cae_a_excel_por_defecto():
+    """Sin `CLIENTIFY_API_TOKEN` configurado, el radio cae a "Subir Excel"
+    por defecto (sin error) — el usuario sigue pudiendo elegir la API a mano."""
+    def app():
+        from src.ui import data_source_selector
+        data_source_selector.CLIENTIFY_API_TOKEN = ""
+        data_source_selector.render_data_source_selector()
+
+    at = AppTest.from_function(app)
+    at.run(timeout=15)
+    assert not at.exception
+
+    radio = at.radio[0]
     assert radio.value == "Subir Excel"
     # Excel (default): se ve el uploader, no el botón de refresh de la API.
     assert len(at.get("file_uploader")) == 1

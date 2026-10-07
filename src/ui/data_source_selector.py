@@ -7,6 +7,7 @@ secciones) — ver tests/test_data_source_selector_ui.py.
 import pandas as pd
 import streamlit as st
 
+from src.config.settings import CLIENTIFY_API_TOKEN
 from src.ui.api_source import clear_api_data_cache, render_api_source
 from src.ui.upload import render_upload
 
@@ -19,6 +20,14 @@ def render_data_source_selector() -> tuple[pd.DataFrame | None, str | None]:
     para Excel, o carga+botón "Actualizar datos" para la API), y actualiza
     `st.session_state.df`/`st.session_state.source_name`.
 
+    Default: API de Clientify si `CLIENTIFY_API_TOKEN` está configurado; si
+    no, cae a Excel (sin error, el usuario sigue pudiendo elegir cualquiera
+    de las 2 manualmente). El `index=` del radio solo aplica la PRIMERA vez
+    que se crea el widget en la sesión — `key="data_source_selector"` hace
+    que Streamlit preserve la elección del usuario en reruns posteriores
+    (ej. al interactuar con otro selector en otra parte de la app), sin
+    reiniciarse a este default.
+
     Devuelve (df, source_name) — el estado actual en session_state, para que
     el resto de `app.py` no necesite leerlo por su cuenta.
     """
@@ -27,10 +36,11 @@ def render_data_source_selector() -> tuple[pd.DataFrame | None, str | None]:
         st.session_state.source_name = None
 
     st.header("Fuente de datos")
+    default_index = 1 if CLIENTIFY_API_TOKEN else 0
     source = st.radio(
         "¿De dónde cargar los datos?",
         options=[EXCEL_OPTION, API_OPTION],
-        index=0,
+        index=default_index,
         key="data_source_selector",
     )
 

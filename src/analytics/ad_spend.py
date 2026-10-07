@@ -221,6 +221,21 @@ def anios_disponibles(labels: list[str]) -> list[int]:
     return sorted({parse_mes_anio(label)[0] for label in labels})
 
 
+def default_anio_index(anios: list[int], anio_actual: int) -> int:
+    """Índice por defecto del selector "Año" sobre `options = [TODOS] +
+    anios`: el año actual si está presente entre los años disponibles en
+    los datos cargados; si no, `0` (= `TODOS`) — el usuario sigue pudiendo
+    elegir cualquier otro año o volver a "Todos" manualmente.
+
+    `anio_actual` se recibe como parámetro (función pura, testeable) en vez
+    de leerse del reloj acá adentro — cada gráfica de `src/ui/sections/
+    ad_spend*.py` lo calcula una sola vez vía `pd.Timestamp.now(tz=
+    APP_TIMEZONE).year` y lo pasa."""
+    if anio_actual in anios:
+        return anios.index(anio_actual) + 1  # +1 porque TODOS ocupa el índice 0
+    return 0
+
+
 def compact_month_xaxis_range(
     categoryarray: list[str], anio: int | str, mes: str
 ) -> tuple[float, float] | None:

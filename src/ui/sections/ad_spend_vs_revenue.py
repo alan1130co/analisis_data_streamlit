@@ -10,6 +10,7 @@ from src.analytics.ad_spend import (
     TODOS,
     MESES_ES,
     anios_disponibles,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend_with_period,
 )
@@ -17,6 +18,7 @@ from src.analytics.ad_spend_vs_closures import (
     calculate_redes_revenue_chart,
     combine_ad_spend_and_revenue,
 )
+from src.config.settings import APP_TIMEZONE
 
 _COLOR_MAP = {
     "Importe": "#1F77B4",        # Azul: gasto
@@ -25,6 +27,11 @@ _COLOR_MAP = {
 _TITLE = "📊 Comparativo Mes-Año: Gasto en pauta vs Ingresos por redes (desde Enero 2025)"
 
 
+def _anio_actual() -> int:
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
+
+
+@st.fragment
 def render_ad_spend_vs_revenue(gasto_raw: pd.DataFrame, df_clientify: pd.DataFrame) -> None:
     """`gasto_raw`: reporte de Meta ya cargado/combinado (salida de
     `load_ad_spend_files`, ver `src/ui/sections/ad_spend.py`).
@@ -63,10 +70,11 @@ def render_ad_spend_vs_revenue(gasto_raw: pd.DataFrame, df_clientify: pd.DataFra
     # "Mes_Año" se repite una vez por "Concepto" (formato largo) — dedup
     # antes de armar las opciones del selector.
     meses_disponibles = data["Mes_Año"].drop_duplicates().tolist()
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend_vs_revenue",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend_vs_revenue",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),

@@ -12,10 +12,20 @@ from src.analytics.ad_spend import (
     MESES_ES,
     anios_disponibles,
     combine_ad_spend_sources,
+    default_anio_index,
     filter_by_anio_mes,
     monthly_ad_spend,
 )
+from src.config.settings import APP_TIMEZONE
 from src.data_sources.ad_spend_loader import AdSpendLoader
+
+
+def _anio_actual() -> int:
+    """Año actual en `APP_TIMEZONE` — usado como default del selector
+    "Año". Función separada (no inline) para que los tests puedan
+    neutralizarla con un sentinel que no exista en su fixture cuando lo que
+    están probando es la mecánica de filtrado, no el default."""
+    return pd.Timestamp.now(tz=APP_TIMEZONE).year
 
 
 @st.cache_data(show_spinner=False)
@@ -96,13 +106,21 @@ def render_ad_spend_from_raw(raw: pd.DataFrame) -> None:
     _render_chart(raw)
 
 
+@st.fragment
 def _render_chart(raw: pd.DataFrame) -> None:
     """Cuerpo compartido por `render_ad_spend` (CSV) y
     `render_ad_spend_from_raw` (API). 2 selectores independientes: "Año"
-    (`key="anio_ad_spend"`) y "Mes" (`key="mes_ad_spend"`), ambos con
-    default "Todos" — con ambos en "Todos" se ve la tendencia completa.
-    Año+Mes específicos combinan con AND (ver `ad_spend.filter_by_anio_mes`,
-    compartida por las 6 gráficas de esta pestaña)."""
+    (`key="anio_ad_spend"`, default el año actual si está entre los datos —
+    ver `default_anio_index` — si no "Todos") y "Mes" (`key="mes_ad_spend"`,
+    default "Todos"). Año+Mes específicos combinan con AND (ver
+    `ad_spend.filter_by_anio_mes`, compartida por las 6 gráficas de esta
+    pestaña).
+
+    Decorado con `@st.fragment`: cambiar cualquiera de los 2 selectores
+    solo re-ejecuta ESTE bloque (filtrado + replot), no el resto de la
+    pestaña "Marketing e Inversión" ni las cargas de datos de `render_ad_
+    spend`/`render_ad_spend_from_raw` (que reciben `raw` ya cargado, fuera
+    del fragment)."""
     data = monthly_ad_spend(raw)
     if data.empty:
         st.warning(
@@ -114,10 +132,11 @@ def _render_chart(raw: pd.DataFrame) -> None:
     data = data.copy()
     # "Mes_Año" ya viene en orden cronológico (ver monthly_ad_spend).
     meses_disponibles = list(data["Mes_Año"])
+    anios = anios_disponibles(meses_disponibles)
     c1, c2 = st.columns(2)
     anio_sel = c1.selectbox(
-        "Año", options=[TODOS] + anios_disponibles(meses_disponibles),
-        index=0, key="anio_ad_spend",
+        "Año", options=[TODOS] + anios,
+        index=default_anio_index(anios, _anio_actual()), key="anio_ad_spend",
     )
     mes_sel = c2.selectbox(
         "Mes", options=[TODOS] + list(MESES_ES.values()),
