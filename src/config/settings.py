@@ -55,6 +55,15 @@ META_AD_ACCOUNT_ID_SM_CP_INTERNA: str = _get_secret("META_AD_ACCOUNT_ID_INTERNA"
 META_AD_ACCOUNT_ID_SOLUCIONES_MIGRATORIAS: str = _get_secret("META_AD_ACCOUNT_ID_SOLUCIONES", "")
 META_AD_ACCOUNT_ID_CONTINGENCIA: str = _get_secret("META_AD_ACCOUNT_ID_CONTINGENCIA", "")
 
+# --- Proveedor de IA para el análisis del reporte de Marketing (ver
+# src/data_sources/ai_provider.py). AI_PROVIDER selecciona el adaptador
+# ("openai" | "anthropic"); AI_MODEL es opcional — si no se configura, cada
+# adaptador usa su propio modelo chico/económico por defecto (ver
+# ai_provider.py: gpt-5-nano para OpenAI, claude-haiku-4-5 para Anthropic). ---
+AI_PROVIDER: str = _get_secret("AI_PROVIDER", "anthropic")
+AI_API_KEY: str = _get_secret("AI_API_KEY", "")
+AI_MODEL: str = _get_secret("AI_MODEL", "")
+
 # --- Rutas ---
 DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"

@@ -55,6 +55,9 @@ from src.ui.sections.ad_spend_roas import render_ad_spend_roas
 from src.ui.sections.ad_spend_total_roas import render_ad_spend_total_roas
 from src.ui.sections.ad_spend_vs_process_value import render_ad_spend_vs_process_value
 from src.ui.sections.ad_spend_vs_process_value_roas import render_ad_spend_vs_process_value_roas
+from src.ui.report_generator import render_full_report_generator, render_report_generator
+from src.reports.section_types import ReportContext
+from src.analytics.ad_spend import TODOS as PERIODO_TODOS
 
 
 def main():
@@ -112,10 +115,10 @@ def main():
             # Misma fuente CSV reutilizada tal cual (sin pedirla 2 veces) —
             # ambas gráficas mostrarían lo mismo, así que se omite la línea
             # de comparación (sería una diferencia trivial, siempre 0).
-            render_ad_spend_billed(BILLED_CSV_MODE, csv_reuse_raw=gasto_raw)
+            billed_raw = render_ad_spend_billed(BILLED_CSV_MODE, csv_reuse_raw=gasto_raw)
         else:
             render_ad_spend_from_raw(gasto_raw)
-            render_ad_spend_billed(BILLED_API_MODE, real_raw=gasto_raw)
+            billed_raw = render_ad_spend_billed(BILLED_API_MODE, real_raw=gasto_raw)
 
     # --- Fuente de contactos de Clientify (Excel o API): puede bloquear el
     # script varios minutos si dispara un sync completo contra la API real.
@@ -165,6 +168,7 @@ def main():
             index=default_month_index(months),
             format_func=lambda m: format_month_label(m),
         )
+        st.divider()
 
     # Métricas siempre sobre el dataset completo — los campos internos ya separan pauta/referido
     df_period_full = filter_by_month(df_unfiltered, selected)
@@ -178,6 +182,30 @@ def main():
     # df filtrado para las secciones de detalle
     df_current = filter_by_month(df, selected)
     df_full = df
+
+    # Contexto único para TODOS los generadores de reporte (uno por pestaña
+    # + el "Reporte completo" del sidebar, ver src/ui/report_generator.py)
+    # — cada SectionSpec toma de acá lo que necesita (ver
+    # src/reports/section_types.py). `anio_filter` arranca en "Todos": el
+    # botón de Marketing ofrece su propio selector de año y reconstruye
+    # este contexto con `dataclasses.replace`; el resto de las secciones
+    # ignora ese campo (usan `year`/`month`, el período ya seleccionado).
+    report_ctx = ReportContext(
+        gasto_raw=gasto_raw,
+        billed_raw=billed_raw,
+        df_clientify=df_unfiltered,
+        year=selected.year,
+        month=selected.month,
+        team=equipo,
+        metrics=metrics,
+        metrics_prev=metrics_prev,
+        anio_filter=PERIODO_TODOS,
+    )
+    periodo_label = format_month_label(selected)
+
+    with st.sidebar:
+        render_full_report_generator(report_ctx, periodo_label=periodo_label)
+        st.divider()
 
     # === TAB 1 (continuación): las 6 gráficas que SÍ cruzan gasto en pauta
     # con leads/cierres de Clientify — recién acá, con `df_unfiltered` ya
@@ -198,6 +226,8 @@ def main():
             render_ad_spend_vs_process_value(gasto_raw, df_unfiltered)
             st.markdown("---")
             render_ad_spend_vs_process_value_roas(gasto_raw, df_unfiltered)
+            st.markdown("---")
+            render_report_generator("marketing", report_ctx, periodo_label=periodo_label)
 
     # === TAB 2: Segmentación Clave — quién cierra (geografía, demografía, proceso) ===
     with timed_stage("Render TAB 2 - Segmentación Clave"):
@@ -215,6 +245,8 @@ def main():
             render_closures_by_age(df, selected.year, selected.month, team=equipo)
             st.markdown("---")
             render_closures_by_gender(df, selected.year, selected.month)
+            st.markdown("---")
+            render_report_generator("segmentacion", report_ctx, periodo_label=periodo_label)
 
     # === TAB 3: Embudo y Canales — de dónde entran los leads y cómo avanzan ===
     with timed_stage("Render TAB 3 - Embudo y Canales"):
@@ -234,6 +266,8 @@ def main():
             render_closures_by_publication(df_unfiltered, selected.year, selected.month)
             st.markdown("---")
             render_closures_by_channel_over_time(df_unfiltered)
+            st.markdown("---")
+            render_report_generator("embudo", report_ctx, periodo_label=periodo_label)
 
     # === TAB 4: Gestión Comercial — KPIs, operación diaria, tendencias, detalle ===
     with timed_stage("Render TAB 4 - Gestión Comercial"):
@@ -251,6 +285,8 @@ def main():
             render_trend(df_unfiltered, default_month=selected)
             st.markdown("---")
             render_leads_summary(df_unfiltered, default_month=selected)
+            st.markdown("---")
+            render_report_generator("gestion_comercial", report_ctx, periodo_label=periodo_label)
 
             with st.expander("Ver datos del período"):
                 # Las columnas "_is_*" son derivadas internas precalculadas por

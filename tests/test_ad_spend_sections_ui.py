@@ -1018,3 +1018,105 @@ def test_bar_y_linea_en_paneles_separados_en_todas_las_graficas_de_marketing():
                 f"'top'/'bottom center' — se encontró {line['textposition']!r}"
             )
             assert line.get("yaxis") == "y2", f"{nombre}: la línea debe estar en el panel 2 (yaxis 'y2')"
+
+
+def test_render_ad_spend_barras_anchas_un_solo_trace_sin_importar_cantidad_de_meses():
+    """Regresión: `render_ad_spend` usaba `px.bar(..., color="Mes_Año")`,
+    que arma UN TRACE DE PLOTLY POR MES (mismo criterio en "x" y "color").
+    Con `barmode` "group"/"relative" (default de Plotly), el ancho de cada
+    barra se divide entre el número TOTAL de traces de la figura, así que
+    con muchos meses (histórico largo, vía API de Meta) las barras quedaban
+    minúsculas con mucho hueco alrededor — bug reportado por el usuario
+    ("barras muy delgadas, con mucho espacio entre ellas", etiquetas
+    diminutas). Fix: un único trace de barras, con un color por barra vía
+    `marker_color` (lista), igual que el resto de "Marketing e Inversión"
+    (ver `ad_spend_billed.py`). Se prueba con 9 meses (más que los 2-3 de
+    otros tests) para que la regresión no pase inadvertida con pocos datos."""
+    def app():
+        from src.ui.sections.ad_spend import render_ad_spend
+        from tests.test_ad_spend_sections_ui import _FakeUploadedFile
+
+        filas = "\n".join(f"01/0{m}/2026,USD,{1000 + m * 300}" for m in range(1, 10))
+        csv = ("Fecha,Divisa,Importe\n" + filas + "\n").encode()
+        render_ad_spend([_FakeUploadedFile("billing.csv", csv)])
+
+    at = AppTest.from_function(app)
+    at.run()
+    assert not at.exception
+
+    chart = at.get("plotly_chart")[0]
+    spec = json.loads(chart.proto.spec)
+    traces = spec["data"]
+    bar_traces = [t for t in traces if t.get("type") == "bar"]
+
+    # Un solo trace de barras (NO uno por mes) — así Plotly no divide el
+    # ancho de la barra entre 9 "grupos" vacíos.
+    assert len(bar_traces) == 1
+    assert len(bar_traces[0]["x"]) == 9
+
+    # `bargap` moderado (no el 0.25 que, combinado con el bug de arriba,
+    # dejaba aún menos ancho útil) y `barmode` que NO sea "group"/"relative"
+    # con múltiples traces (acá es irrelevante por ser 1 solo trace, pero se
+    # fija el valor para que una regresión futura a "color=Mes_Año" la
+    # vuelva a disparar).
+    assert spec["layout"]["bargap"] <= 0.2
+
+    # Etiquetas de valor legibles (>= 12px) — antes no se fijaba `textfont`
+    # y, combinado con el bug de las barras finas, Plotly las reducía más
+    # de lo legible.
+    textfont = bar_traces[0].get("textfont") or {}
+    assert textfont.get("size", 0) >= 12
+
+    # Un color distinto por barra (se conserva la intención visual original
+    # de `color_discrete_sequence=px.colors.qualitative.Bold`).
+    marker_colors = bar_traces[0]["marker"]["color"]
+    assert len(set(marker_colors)) > 1
+
+
+def test_graficas_de_barras_agrupadas_no_crean_un_trace_por_mes():
+    """Mismo chequeo que el test de arriba, pero para las gráficas de
+    "Marketing e Inversión" que SÍ necesitan más de 1 trace de barras
+    (2 series comparadas) — deben seguir teniendo como máximo 1 trace POR
+    SERIE (2), nunca 1 por mes, sin importar cuántos meses traiga el
+    histórico."""
+    def app_vs_revenue():
+        import pandas as pd
+        from src.ui.sections.ad_spend_vs_revenue import render_ad_spend_vs_revenue
+
+        gasto_raw = pd.DataFrame([
+            {"Fecha": f"01/0{m}/2025", "Divisa": "USD", "Importe": str(100 + m * 10)}
+            for m in range(1, 8)
+        ])
+        df_clientify = pd.DataFrame([
+            {"creado": pd.Timestamp(f"2025-0{m}-01"), "estado": "activo",
+             "Canal offline": "Clientify - Facebook", "Origen de la pauta": "Facebook",
+             "canal online": "paid social",
+             "Fecha de cierre": pd.Timestamp(f"2025-0{m}-05"), "Fecha de segundo cierre": None,
+             "Fecha de tercer cierre": None, "Fecha de 4to cierre": None,
+             "Valor total del proceso": str(1000 + m * 50)}
+            for m in range(1, 8)
+        ])
+        render_ad_spend_vs_revenue(gasto_raw, df_clientify)
+
+    def app_billed():
+        from src.ui.sections.ad_spend_billed import render_ad_spend_billed, CSV_MODE
+        from tests.test_ad_spend_sections_ui import _FakeUploadedFile
+
+        filas = "\n".join(f"01/0{m}/2026,USD,{500 + m * 50}" for m in range(1, 8))
+        csv = ("Fecha,Divisa,Importe\n" + filas + "\n").encode()
+        from src.ui.sections.ad_spend import load_ad_spend_files
+        raw = load_ad_spend_files([_FakeUploadedFile("billing.csv", csv)])
+        render_ad_spend_billed(CSV_MODE, csv_reuse_raw=raw)
+
+    for nombre, app_fn, max_traces in [("vs_revenue", app_vs_revenue, 2), ("billed", app_billed, 1)]:
+        at = AppTest.from_function(app_fn)
+        at.run()
+        assert not at.exception, f"{nombre}: {at.exception}"
+
+        chart = at.get("plotly_chart")[0]
+        spec = json.loads(chart.proto.spec)
+        bar_traces = [t for t in spec["data"] if t.get("type") == "bar"]
+        assert len(bar_traces) <= max_traces, (
+            f"{nombre}: se esperaban como máximo {max_traces} trace(s) de "
+            f"barras, se encontraron {len(bar_traces)} (¿un trace por mes?)"
+        )

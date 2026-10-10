@@ -148,7 +148,7 @@ def render_ad_spend_billed(
     *,
     csv_reuse_raw: pd.DataFrame | None = None,
     real_raw: pd.DataFrame | None = None,
-) -> None:
+) -> pd.DataFrame:
     """`mode`: `CSV_MODE` reutiliza `csv_reuse_raw` (CSV ya cargado arriba,
     sin pedirlo 2 veces); `API_MODE` trae lo facturado automáticamente por
     API, con el CSV como opción secundaria en un expander.
@@ -159,7 +159,11 @@ def render_ad_spend_billed(
     2 selectores independientes: "Año" (`key="anio_ad_spend_billed"`) y
     "Mes" (`key="mes_ad_spend_billed"`), mismo patrón que el resto de
     "Marketing e Inversión" (ver `ad_spend.filter_by_anio_mes`).
-    """
+
+    Devuelve `billed_raw` (nunca `None`, puede venir vacío) — `app.py` lo
+    captura para pasarlo al grupo "Gasto y facturado" del generador de
+    reportes (antes esta función no lo expone fuera de este módulo, así
+    que ese grupo solo incluía el gasto real)."""
     st.markdown("### 🧾 Gasto facturado por mes (cobros de Meta)")
 
     if mode == CSV_MODE:
@@ -169,14 +173,18 @@ def render_ad_spend_billed(
         csv_df = _render_csv_compare_expander(api_df, api_ok)
         billed_raw = api_df if api_ok and not api_df.empty else csv_df
 
-    if billed_raw is None or billed_raw.empty:
+    if billed_raw is None:
+        billed_raw = pd.DataFrame()
+
+    if billed_raw.empty:
         st.info(
             "Subí el CSV de facturación de Meta Ads para ver lo facturado "
             "(cobros) por mes."
         )
-        return
+        return billed_raw
 
     _render_billed_chart(billed_raw, real_raw)
+    return billed_raw
 
 
 @st.fragment

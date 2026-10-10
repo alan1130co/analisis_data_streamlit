@@ -5,6 +5,7 @@ import io
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.analytics.ad_spend import (
@@ -147,16 +148,32 @@ def _render_chart(raw: pd.DataFrame) -> None:
 
     orden_meses = list(data["Mes_Año"])
 
-    fig = px.bar(
-        data,
-        x="Mes_Año",
-        y="Importe",
-        text="Importe",
-        color="Mes_Año",
-        color_discrete_sequence=px.colors.qualitative.Bold,
-    )
+    # UN SOLO trace de barras con un color distinto por barra (vía
+    # `marker_color`, una lista) — NO `px.bar(..., color="Mes_Año")` como
+    # antes. Ese patrón crea un trace de Plotly POR MES (un color = un
+    # trace, y acá "color" es la misma columna que "x"), y en `barmode`
+    # "group"/"relative" (el default de Plotly) el ancho de cada barra se
+    # divide entre el número TOTAL de traces de la figura, aunque cada
+    # trace solo tenga datos en una categoría — con muchos meses (ver API de
+    # Meta, que trae más historial que el CSV manual de antes) esto encogía
+    # las barras a una fracción minúscula de su categoría, con mucho hueco
+    # alrededor (bug reportado: barras "muy delgadas, con mucho espacio").
+    # Mismo patrón de 1-trace-con-colores-por-barra que ya usan el resto de
+    # gráficas de "Marketing e Inversión" (ver ad_spend_billed.py).
+    paleta = px.colors.qualitative.Bold
+    colores_por_barra = [paleta[i % len(paleta)] for i in range(len(data))]
+
+    fig = go.Figure(go.Bar(
+        x=data["Mes_Año"],
+        y=data["Importe"],
+        text=data["Importe"],
+        texttemplate="$%{text:,.2f}",
+        textposition="outside",
+        textfont=dict(size=14),
+        cliponaxis=False,
+        marker_color=colores_por_barra,
+    ))
     fig.update_xaxes(type="category", categoryorder="array", categoryarray=orden_meses)
-    fig.update_traces(texttemplate="$%{text:,.2f}", textposition="outside", cliponaxis=False)
 
     # Rango del eje Y con margen extra por encima de la barra más alta, para
     # que la etiqueta de valor ("$6,711.82") nunca quede recortada arriba —
@@ -170,7 +187,7 @@ def _render_chart(raw: pd.DataFrame) -> None:
         yaxis=dict(title="Total pagado (USD)", range=[0, ymax]),
         xaxis_tickangle=-45,
         showlegend=False,
-        bargap=0.25,
+        bargap=0.2,
         margin=dict(t=80),
     )
     st.plotly_chart(fig, use_container_width=True)
